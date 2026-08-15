@@ -13,6 +13,16 @@ import {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+// 圖片網址失效時（例如連結被刪除、圖床擋住）顯示的替代圖片，避免出現「???」破圖示
+const PLACEHOLDER_IMG =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">' +
+      '<rect width="100%" height="100%" fill="#1b2540"/>' +
+      '<text x="50%" y="50%" fill="#aab4d4" font-size="22" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif">圖片無法載入</text>' +
+      "</svg>"
+  );
+
 let ITEMS = [];
 let CATEGORY = "全部";
 // 同一筆訂單只能用一種付款方式（糖果 或 現金），所以用全域變數記錄目前選的付款方式
@@ -109,6 +119,12 @@ function renderGrid() {
         <button class="add-btn" ${outOfStock ? "disabled" : ""}>加入購物車</button>
       </div>
     `;
+
+    const imgEl = card.querySelector("img");
+    imgEl.onerror = () => {
+      imgEl.onerror = null;
+      imgEl.src = PLACEHOLDER_IMG;
+    };
 
     card.querySelector(".add-btn").onclick = () => addToCart(item.id);
     grid.appendChild(card);
@@ -241,7 +257,7 @@ async function checkout() {
         const unitPrice = PAYMENT_METHOD === "糖果" ? item.priceCandy : item.priceCash;
         const lineTotal = unitPrice * qty;
         total += lineTotal;
-        orderItems.push({ id: snap.id, name: item.name, price: unitPrice, qty });
+        orderItems.push({ id: snap.id, name: item.name, price: unitPrice, qty, image: item.image });
       });
 
       const orderRef = doc(collection(db, "orders"));
@@ -262,15 +278,15 @@ async function checkout() {
         tx.update(itemRefs[idx], { stock: newStock });
       });
 
-      return { id: orderRef.id, total, paymentMethod: PAYMENT_METHOD };
+      return { id: orderRef.id, total, paymentMethod: PAYMENT_METHOD, items: orderItems };
     });
 
     CART = {};
     saveCart();
     renderCart();
     await loadItems();
-    const totalText = formatPrice(result.paymentMethod, result.total);
-    msgBox.innerHTML = `<div class="msg success">✅ 訂單已送出！訂單編號：${result.id}，應付：${totalText}<br/>📸 請截圖這個畫面，私訊 Discord 給賣家確認訂單～</div>`;
+    msgBox.innerHTML = "";
+    showOrderSummary({ ...result, buyerName, contact, note });
   } catch (err) {
     msgBox.innerHTML = `<div class="msg error">下單失敗：${err.message || "請稍後再試"}</div>`;
   } finally {
@@ -278,6 +294,93 @@ async function checkout() {
     document.getElementById("checkoutBtn").textContent = "送出訂單";
   }
 }
+
+// 送出訂單後跳出一個「乾淨」的訂單畫面（不含商品列表、篩選按鈕等雜訊），
+// 買家只要截這個畫面就好，不用截整個網頁。
+function showOrderSummary({ id, total, paymentMethod, items, buyerName, contact, note }) {
+  const totalText = formatPrice(paymentMethod, total);
+  const itemsHtml = items
+    .map((i) => {
+      const lineText = paymentMethod === "糖果" ? `${i.price * i.qty} 糖果` : `NT$ ${i.price * i.qty}`;
+      return `
+        <div class="order-summary-item">
+          <img src="${i.image || PLACEHOLDER_IMG}" alt="${i.name}" class="order-summary-thumb" />
+          <span class="order-summary-item-name">${i.name} x${i.qty}</span>
+          <span class="order-summary-item-price">${lineText}</span>
+        </div>`;
+    })
+    .join("");
+
+  document.getElementById("orderSummaryBody").innerHTML = `
+    <div class="order-summary-row"><span>訂單編號</span><span>${id}</span></div>
+    <div class="order-summary-row"><span>買家</span><span>${buyerName}</span></div>
+    <div class="order-summary-row"><span>聯絡方式</span><span>${contact || "-"}</span></div>
+    ${note ? `<div class="order-summary-row"><span>備註</span><span>${note}</span></div>` : ""}
+    <div class="order-summary-row"><span>付款方式</span><span>${paymentMethod === "糖果" ? "🍬 糖果" : "💵 現金"}</span></div>
+    <div class="order-summary-items">${itemsHtml}</div>
+    <div class="order-summary-total"><span>總金額</span><span>${totalText}</span></div>
+  `;
+  document.getElementById("orderSummaryBody")
+    .querySelectorAll(".order-summary-thumb")
+    .forEach((img) => {
+      img.onerror = () => {
+        img.onerror = null;
+        img.src = PLACEHOLDER_IMG;
+      };
+    });
+  document.getElementById("captureMsg").innerHTML = "";
+  document.getElementById("orderSummaryOverlay").style.display = "flex";
+}
+
+// 買家按「截圖並複製」：把訂單卡片畫成一張圖片，直接複製到剪貼簿，
+// 買家可以直接在 Discord 貼上（Ctrl+V / Cmd+V），不用自己動手截圖。
+async function captureAndCopyOrderSummary() {
+  const captureMsg = document.getElementById("captureMsg");
+  const captureBtn = document.getElementById("orderSummaryCaptureBtn");
+  const target = document.getElementById("orderSummaryCapture");
+
+  if (typeof html2canvas === "undefined") {
+    captureMsg.textContent = "截圖功能載入中，請稍後再試一次，或直接手動截圖畫面。";
+    return;
+  }
+
+  captureBtn.disabled = true;
+  captureBtn.textContent = "截圖中...";
+  try {
+    const canvas = await html2canvas(target, { backgroundColor: "#101a33", scale: 2, useCORS: true });
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("轉檔失敗");
+
+    if (navigator.clipboard && window.ClipboardItem) {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      captureMsg.textContent = "✅ 已複製到剪貼簿！到 Discord 訊息框按 Ctrl+V（Mac 是 Cmd+V）貼上就可以了。";
+    } else {
+      throw new Error("此瀏覽器不支援自動複製");
+    }
+  } catch (err) {
+    // 瀏覽器不支援自動複製剪貼簿時，改成直接下載圖片，買家把圖片傳給賣家即可
+    try {
+      const canvas = await html2canvas(target, { backgroundColor: "#101a33", scale: 2, useCORS: true });
+      const dataUrl = canvas.toDataURL("image/png");
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = "訂單截圖.png";
+      link.click();
+      captureMsg.textContent = "此瀏覽器不支援自動複製，已改成直接下載圖片，把圖片傳給賣家即可。";
+    } catch (err2) {
+      captureMsg.textContent = "截圖失敗，請直接手動截圖這個畫面。";
+    }
+  } finally {
+    captureBtn.disabled = false;
+    captureBtn.textContent = "📸 截圖並複製";
+  }
+}
+
+document.getElementById("orderSummaryCaptureBtn").addEventListener("click", captureAndCopyOrderSummary);
+
+document.getElementById("orderSummaryClose").addEventListener("click", () => {
+  document.getElementById("orderSummaryOverlay").style.display = "none";
+});
 
 document.querySelectorAll("#globalPayToggle .pay-btn").forEach((btn) => {
   btn.addEventListener("click", () => setPaymentMethod(btn.dataset.method));
