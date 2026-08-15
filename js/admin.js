@@ -24,6 +24,16 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// 圖片網址失效時顯示的替代圖片，避免後台商品列表出現「???」破圖示
+const PLACEHOLDER_IMG =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="88">' +
+      '<rect width="100%" height="100%" fill="#1b2540"/>' +
+      '<text x="50%" y="50%" fill="#aab4d4" font-size="11" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif">無圖片</text>' +
+      "</svg>"
+  );
+
 // ---------- 登入 ----------
 document.getElementById("loginBtn").onclick = async () => {
   const email = document.getElementById("emailInput").value.trim();
@@ -82,12 +92,25 @@ function setActiveTab(activeId) {
 }
 
 // ---------- Items ----------
+// 商品排序：每筆商品有一個 sortOrder 數字，數字小的排前面。
+// 還沒設定過排序的舊商品，暫時用讀取到的順序當預設值。
+function sortItemsByOrder(items) {
+  return items
+    .map((item, idx) => ({ item, idx }))
+    .sort((a, b) => {
+      const orderA = a.item.sortOrder !== undefined ? a.item.sortOrder : a.idx;
+      const orderB = b.item.sortOrder !== undefined ? b.item.sortOrder : b.idx;
+      return orderA - orderB;
+    })
+    .map((x) => x.item);
+}
+
 async function loadItems() {
   const snap = await getDocs(collection(db, "items"));
-  const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const items = sortItemsByOrder(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
   const tbody = document.getElementById("itemsTbody");
   tbody.innerHTML = "";
-  items.forEach((item) => {
+  items.forEach((item, idx) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td><img src="${item.image}" style="width:60px;height:44px;object-fit:cover;border-radius:6px;" /></td>
@@ -98,16 +121,38 @@ async function loadItems() {
       <td>${item.stock}</td>
       <td><span class="badge ${item.active ? "on" : "off"}">${item.active ? "上架中" : "已下架"}</span></td>
       <td class="row-actions">
+        <button class="move-up" ${idx === 0 ? "disabled" : ""} title="往上移">▲</button>
+        <button class="move-down" ${idx === items.length - 1 ? "disabled" : ""} title="往下移">▼</button>
         <button class="edit">編輯</button>
         <button class="edit toggle">${item.active ? "下架" : "上架"}</button>
         <button class="del">刪除</button>
       </td>
     `;
+    const imgEl = tr.querySelector("img");
+    imgEl.onerror = () => {
+      imgEl.onerror = null;
+      imgEl.src = PLACEHOLDER_IMG;
+    };
+    tr.querySelector(".move-up").onclick = () => moveItem(items, idx, -1);
+    tr.querySelector(".move-down").onclick = () => moveItem(items, idx, 1);
     tr.querySelector(".edit").onclick = () => fillForm(item);
     tr.querySelector(".toggle").onclick = () => toggleActive(item);
     tr.querySelector(".del").onclick = () => deleteItem(item.id);
     tbody.appendChild(tr);
   });
+}
+
+// 把目前排序好的商品清單裡，第 idx 筆和它上面（direction=-1）或下面（direction=1）
+// 那筆互換順序，然後把「目前這份排序」整批寫回資料庫（幫每筆商品補上 sortOrder）。
+async function moveItem(sortedItems, idx, direction) {
+  const targetIdx = idx + direction;
+  if (targetIdx < 0 || targetIdx >= sortedItems.length) return;
+
+  const items = sortedItems.slice();
+  [items[idx], items[targetIdx]] = [items[targetIdx], items[idx]];
+
+  await Promise.all(items.map((item, i) => updateDoc(doc(db, "items", item.id), { sortOrder: i })));
+  loadItems();
 }
 
 function fillForm(item) {
@@ -149,7 +194,8 @@ async function saveItem() {
   if (id) {
     await updateDoc(doc(db, "items", id), payload);
   } else {
-    await addDoc(collection(db, "items"), { ...payload, active: true });
+    // 新商品預設排在最後面（用當下時間當排序值，一定比舊商品大）
+    await addDoc(collection(db, "items"), { ...payload, active: true, sortOrder: Date.now() });
   }
   clearForm();
   loadItems();

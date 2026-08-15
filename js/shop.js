@@ -46,12 +46,25 @@ function formatPrice(paymentMethod, amount) {
   return paymentMethod === "糖果" ? `🍬 ${amount} 糖果` : `💵 NT$ ${amount}`;
 }
 
+// 商品排序：跟後台一樣，用 sortOrder 數字排序（小的在前面），
+// 還沒有 sortOrder 的舊商品就照原本讀到的順序排在後面。
+function sortItemsByOrder(items) {
+  return items
+    .map((item, idx) => ({ item, idx }))
+    .sort((a, b) => {
+      const orderA = a.item.sortOrder !== undefined ? a.item.sortOrder : a.idx;
+      const orderB = b.item.sortOrder !== undefined ? b.item.sortOrder : b.idx;
+      return orderA - orderB;
+    })
+    .map((x) => x.item);
+}
+
 async function loadItems() {
   try {
     const snap = await getDocs(collection(db, "items"));
-    ITEMS = snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }))
-      .filter((i) => i.active !== false);
+    ITEMS = sortItemsByOrder(
+      snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((i) => i.active !== false)
+    );
   } catch (err) {
     console.error("[Firestore] 讀取商品失敗:", err);
     ITEMS = [];
