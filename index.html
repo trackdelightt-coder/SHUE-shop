@@ -3,22 +3,25 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>蘇蘇家具商店</title>
+<title>MSTAR 家具商店</title>
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <header class="topbar">
     <div>
-      <h1>🛋️ 蘇蘇家具商店</h1>
+      <h1>🛋️ MSTAR 家具商店</h1>
       <div class="sub">遊戲家具線上訂購 · 下單後金額自動計算</div>
     </div>
-    <a class="admin-link" href="admin.html">後台管理 →</a>
+    <div class="topbar-links">
+      <button type="button" id="discordBtn" class="discord-link">💬 Discord：shue_08</button>
+    </div>
   </header>
 
   <div id="announcementBox" class="announcement" style="display:none;"></div>
 
   <div class="layout">
     <div>
+      <input id="searchBox" class="search-box" type="text" placeholder="🔍 搜尋商品名稱..." />
       <div class="filters" id="filters"></div>
       <div class="grid" id="grid"></div>
     </div>
@@ -37,8 +40,16 @@
       <div id="cartLines"><div class="cart-empty">購物車是空的，快去挑選家具吧！</div></div>
       <div class="total-row"><span>總金額</span><span id="totalAmount">0</span></div>
 
+      <div class="pay-method-block">
+        <div class="pay-method-label">角色（請選擇要放家具的角色）</div>
+        <div class="pay-toggle" id="genderToggle">
+          <button type="button" class="pay-btn active" data-gender="男角">🙎‍♂️ 男角</button>
+          <button type="button" class="pay-btn" data-gender="女角">🙍‍♀️ 女角</button>
+        </div>
+      </div>
+
       <input id="buyerName" placeholder="您的暱稱 / 遊戲ID" />
-      <input id="contact" placeholder="聯絡方式（Discord / LINE 等）" />
+      <input id="contact" placeholder="您的 Discord ID（必填，賣家會用這個聯絡您）" />
       <textarea id="note" rows="2" placeholder="備註（選填）"></textarea>
 
       <button class="checkout-btn" id="checkoutBtn">送出訂單</button>
@@ -61,6 +72,8 @@
       <div id="captureMsg" class="capture-msg"></div>
     </div>
   </div>
+
+  <footer class="site-footer"><a href="admin.html" class="admin-link-subtle">管理員</a></footer>
 
   <script src="js/vendor/html2canvas.min.js"></script>
   <script type="module" src="js/shop.js"></script>
