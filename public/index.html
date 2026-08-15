@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MSTAR 家具商店</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>🛋️ MSTAR 家具商店</h1>
+      <div class="sub">遊戲家具線上訂購 · 下單後金額自動計算</div>
+    </div>
+    <a class="admin-link" href="admin.html">後台管理 →</a>
+  </header>
+
+  <div id="announcementBox" class="announcement" style="display:none;"></div>
+
+  <div class="layout">
+    <div>
+      <div class="filters" id="filters"></div>
+      <div class="grid" id="grid"></div>
+    </div>
+
+    <aside class="cart-panel">
+      <h2>🛒 我的購物車</h2>
+
+      <div class="pay-method-block">
+        <div class="pay-method-label">本次訂單付款方式（同一筆訂單只能選一種）</div>
+        <div class="pay-toggle" id="globalPayToggle">
+          <button type="button" class="pay-btn active" data-method="糖果">🍬 糖果</button>
+          <button type="button" class="pay-btn" data-method="現金">💵 現金</button>
+        </div>
+      </div>
+
+      <div id="cartLines"><div class="cart-empty">購物車是空的，快去挑選家具吧！</div></div>
+      <div class="total-row"><span>總金額</span><span id="totalAmount">0</span></div>
+
+      <input id="buyerName" placeholder="您的暱稱 / 遊戲ID" />
+      <input id="contact" placeholder="聯絡方式（Discord / LINE 等）" />
+      <textarea id="note" rows="2" placeholder="備註（選填）"></textarea>
+
+      <button class="checkout-btn" id="checkoutBtn">送出訂單</button>
+      <div class="checkout-hint">📸 送出後別忘了截圖這個畫面，私訊 Discord 給賣家確認訂單！</div>
+      <div id="msgBox"></div>
+    </aside>
+  </div>
+
+  <script type="module" src="js/shop.js"></script>
+</body>
+</html>

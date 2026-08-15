@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MSTAR 家具商店 - 後台管理</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>⚙️ MSTAR 家具商店 後台管理</h1>
+      <div class="sub">商品編輯 · 訂單查看</div>
+    </div>
+    <a class="admin-link" href="index.html">← 回買家頁面</a>
+  </header>
+
+  <div id="loginView" class="login-box">
+    <h2>後台登入</h2>
+    <input type="email" id="emailInput" placeholder="管理員 Email" autocomplete="username" />
+    <input type="password" id="pwdInput" placeholder="密碼" autocomplete="current-password" />
+    <button id="loginBtn">登入</button>
+    <div id="loginMsg" style="color:#e0526b;font-size:13px;margin-top:8px;"></div>
+  </div>
+
+  <div id="adminView" class="admin-wrap" style="display:none;">
+    <div class="tabs">
+      <button id="tabItems" class="active">商品管理</button>
+      <button id="tabOrders">訂單管理</button>
+      <button id="tabSettings">商店設定</button>
+      <button id="logoutBtn" style="margin-left:auto;">登出</button>
+    </div>
+
+    <div id="itemsPanel">
+      <div class="form-grid" id="itemForm">
+        <input type="hidden" id="itemId" />
+        <div>
+          <label>商品名稱</label>
+          <input id="fName" placeholder="例：北歐風雙人沙發" />
+        </div>
+        <div>
+          <label>分類（可加 emoji，例如 🛋️ 客廳）</label>
+          <input id="fCategory" placeholder="例：🛋️ 客廳" />
+        </div>
+        <div>
+          <label>🍬 糖果價</label>
+          <input id="fPriceCandy" type="number" placeholder="例：300" />
+        </div>
+        <div>
+          <label>💵 現金價（NT$）</label>
+          <input id="fPriceCash" type="number" placeholder="例：350" />
+        </div>
+        <div>
+          <label>庫存</label>
+          <input id="fStock" type="number" placeholder="例：20" />
+        </div>
+        <div class="full">
+          <label>圖片網址</label>
+          <input id="fImage" placeholder="https://..." />
+        </div>
+        <div class="full">
+          <label>商品描述</label>
+          <textarea id="fDesc" rows="2"></textarea>
+        </div>
+        <button id="saveItemBtn" class="primary-submit">新增 / 儲存商品</button>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <button id="seedBtn" class="secondary-btn" type="button">📦 匯入 6 筆範例商品（僅第一次使用時按一次）</button>
+      </div>
+
+      <table>
+        <thead>
+          <tr><th>圖片</th><th>名稱</th><th>分類</th><th>🍬 糖果價</th><th>💵 現金價</th><th>庫存</th><th>狀態</th><th>操作</th></tr>
+        </thead>
+        <tbody id="itemsTbody"></tbody>
+      </table>
+    </div>
+
+    <div id="ordersPanel" style="display:none;">
+      <table>
+        <thead>
+          <tr><th>訂單編號</th><th>時間</th><th>買家</th><th>聯絡方式</th><th>付款方式</th><th>明細</th><th>總金額</th><th>狀態</th></tr>
+        </thead>
+        <tbody id="ordersTbody"></tbody>
+      </table>
+    </div>
+
+    <div id="settingsPanel" style="display:none;">
+      <div class="form-grid" style="grid-template-columns: 1fr;">
+        <div>
+          <label>商店公告（會顯示在買家頁面最上方，例如營業時間、交易比例、注意事項）</label>
+          <textarea id="fAnnouncement" rows="6" placeholder="例：&#10;📢 營業時間：每天 20:00-24:00&#10;💰 交易方式：可糖可T，比值1:1&#10;💬 有問題歡迎 Discord 聯繫我們"></textarea>
+        </div>
+        <button id="saveSettingsBtn" class="primary-submit">儲存公告</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/admin.js"></script>
+</body>
+</html>

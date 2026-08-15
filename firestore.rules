@@ -1,0 +1,34 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 商品：所有人都能看（買家頁面要顯示），
+    // 新增/刪除/大部分修改都要先登入（Firebase Authentication）才能做，
+    // 但「只改庫存、而且庫存只能變少」這個特例開放給沒登入的買家，
+    // 這樣買家送出訂單時系統才能自動扣庫存。
+    match /items/{itemId} {
+      allow read: if true;
+      allow create, delete: if request.auth != null;
+      allow update: if request.auth != null
+        || (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock']) &&
+          request.resource.data.stock is int &&
+          request.resource.data.stock >= 0 &&
+          request.resource.data.stock <= resource.data.stock
+        );
+    }
+
+    // 訂單：任何人都可以「新增」一筆訂單（買家送出訂單），
+    // 但只有登入的管理員可以「讀取列表」和「修改狀態」，買家看不到別人的訂單內容。
+    match /orders/{orderId} {
+      allow create: if true;
+      allow read, update, delete: if request.auth != null;
+    }
+
+    // 商店設定（公告）：所有人都能看，只有登入的管理員能改。
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+  }
+}
