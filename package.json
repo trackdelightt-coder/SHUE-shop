@@ -1,0 +1,15 @@
+{
+  "name": "mstar-furniture-shop",
+  "version": "1.0.0",
+  "description": "MSTAR 遊戲家具商店 - 買家瀏覽下單 + 後台管理 + Discord 下單通知",
+  "main": "server/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}
