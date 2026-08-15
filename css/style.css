@@ -670,7 +670,8 @@ th { background: rgba(255, 255, 255, 0.06); color: var(--primary); }
 }
 
 .form-grid input,
-.form-grid textarea {
+.form-grid textarea,
+.form-grid select {
   width: 100%;
   padding: 8px 10px;
   background: rgba(255, 255, 255, 0.08);
@@ -680,7 +681,28 @@ th { background: rgba(255, 255, 255, 0.06); color: var(--primary); }
   color: #fff;
 }
 
+.form-grid select option {
+  background: var(--panel-solid);
+  color: #fff;
+}
+
 .form-grid .full { grid-column: 1 / -1; }
+
+#categoryFilter {
+  padding: 10px 14px;
+  background: var(--panel-light);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+#categoryFilter option {
+  background: var(--panel-solid);
+  color: #fff;
+}
 
 button.secondary-btn {
   background: transparent;
