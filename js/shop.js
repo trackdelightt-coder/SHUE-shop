@@ -25,13 +25,20 @@ const PLACEHOLDER_IMG =
 
 let ITEMS = [];
 let CATEGORY = "全部";
+let SEARCH_KEYWORD = "";
 // 同一筆訂單只能用一種付款方式（糖果 或 現金），所以用全域變數記錄目前選的付款方式
 let PAYMENT_METHOD = localStorage.getItem("mstar_pay_method") || "糖果";
+// 家具要放在哪個角色身上（男角／女角）
+let CHARACTER_GENDER = localStorage.getItem("mstar_gender") || "男角";
 // CART 是簡單的 { 商品ID: 數量 }
 let CART = JSON.parse(localStorage.getItem("mstar_cart") || "{}");
 
 function saveCart() {
   localStorage.setItem("mstar_cart", JSON.stringify(CART));
+}
+
+function saveGender() {
+  localStorage.setItem("mstar_gender", CHARACTER_GENDER);
 }
 
 function savePayMethod() {
@@ -113,7 +120,18 @@ function renderFilters() {
 function renderGrid() {
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
-  const list = ITEMS.filter((i) => CATEGORY === "全部" || i.category === CATEGORY);
+  const keyword = SEARCH_KEYWORD.trim().toLowerCase();
+  const list = ITEMS.filter((i) => {
+    const matchCategory = CATEGORY === "全部" || i.category === CATEGORY;
+    const matchKeyword = !keyword || i.name.toLowerCase().includes(keyword);
+    return matchCategory && matchKeyword;
+  });
+
+  if (list.length === 0) {
+    grid.innerHTML = '<div class="cart-empty">找不到符合的商品，換個關鍵字試試看？</div>';
+    return;
+  }
+
   list.forEach((item) => {
     const card = document.createElement("div");
     card.className = "card";
@@ -185,6 +203,18 @@ function updatePayToggleUI() {
   });
 }
 
+function setGender(gender) {
+  CHARACTER_GENDER = gender;
+  saveGender();
+  updateGenderToggleUI();
+}
+
+function updateGenderToggleUI() {
+  document.querySelectorAll("#genderToggle .pay-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.gender === CHARACTER_GENDER);
+  });
+}
+
 function renderCart() {
   const linesEl = document.getElementById("cartLines");
   const ids = Object.keys(CART);
@@ -243,6 +273,10 @@ async function checkout() {
     msgBox.innerHTML = '<div class="msg error">請填寫您的暱稱 / 遊戲ID</div>';
     return;
   }
+  if (!contact) {
+    msgBox.innerHTML = '<div class="msg error">請填寫您的 Discord ID，賣家才能聯絡您確認訂單</div>';
+    return;
+  }
 
   const cartEntries = Object.entries(CART); // [ [id, qty], ... ]
   if (cartEntries.length === 0) return;
@@ -279,6 +313,7 @@ async function checkout() {
         buyerName,
         contact,
         note,
+        characterGender: CHARACTER_GENDER,
         items: orderItems,
         paymentMethod: PAYMENT_METHOD,
         total,
@@ -299,7 +334,7 @@ async function checkout() {
     renderCart();
     await loadItems();
     msgBox.innerHTML = "";
-    showOrderSummary({ ...result, buyerName, contact, note });
+    showOrderSummary({ ...result, buyerName, contact, note, characterGender: CHARACTER_GENDER });
   } catch (err) {
     msgBox.innerHTML = `<div class="msg error">下單失敗：${err.message || "請稍後再試"}</div>`;
   } finally {
@@ -310,7 +345,7 @@ async function checkout() {
 
 // 送出訂單後跳出一個「乾淨」的訂單畫面（不含商品列表、篩選按鈕等雜訊），
 // 買家只要截這個畫面就好，不用截整個網頁。
-function showOrderSummary({ id, total, paymentMethod, items, buyerName, contact, note }) {
+function showOrderSummary({ id, total, paymentMethod, items, buyerName, contact, note, characterGender }) {
   const totalText = formatPrice(paymentMethod, total);
   const itemsHtml = items
     .map((i) => {
@@ -327,7 +362,8 @@ function showOrderSummary({ id, total, paymentMethod, items, buyerName, contact,
   document.getElementById("orderSummaryBody").innerHTML = `
     <div class="order-summary-row"><span>訂單編號</span><span>${id}</span></div>
     <div class="order-summary-row"><span>買家</span><span>${buyerName}</span></div>
-    <div class="order-summary-row"><span>聯絡方式</span><span>${contact || "-"}</span></div>
+    <div class="order-summary-row"><span>Discord ID</span><span>${contact || "-"}</span></div>
+    <div class="order-summary-row"><span>角色</span><span>${characterGender === "女角" ? "🙍‍♀️ 女角" : "🙎‍♂️ 男角"}</span></div>
     ${note ? `<div class="order-summary-row"><span>備註</span><span>${note}</span></div>` : ""}
     <div class="order-summary-row"><span>付款方式</span><span>${paymentMethod === "糖果" ? "🍬 糖果" : "💵 現金"}</span></div>
     <div class="order-summary-items">${itemsHtml}</div>
@@ -399,6 +435,16 @@ document.querySelectorAll("#globalPayToggle .pay-btn").forEach((btn) => {
   btn.addEventListener("click", () => setPaymentMethod(btn.dataset.method));
 });
 updatePayToggleUI();
+
+document.querySelectorAll("#genderToggle .pay-btn").forEach((btn) => {
+  btn.addEventListener("click", () => setGender(btn.dataset.gender));
+});
+updateGenderToggleUI();
+
+document.getElementById("searchBox").addEventListener("input", (e) => {
+  SEARCH_KEYWORD = e.target.value;
+  renderGrid();
+});
 
 document.getElementById("checkoutBtn").addEventListener("click", checkout);
 loadItems();

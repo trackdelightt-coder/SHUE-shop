@@ -105,12 +105,36 @@ function sortItemsByOrder(items) {
     .map((x) => x.item);
 }
 
+// ALL_ITEMS 存整份、已經照排序排好的商品清單（不受搜尋框影響），
+// 搬移商品順序（▲▼）一律用這份完整清單的位置去計算，這樣即使搜尋框正在篩選畫面上只顯示部分商品，
+// 順序調整還是會對到正確的商品，不會跑掉。
+let ALL_ITEMS = [];
+
 async function loadItems() {
   const snap = await getDocs(collection(db, "items"));
-  const items = sortItemsByOrder(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  ALL_ITEMS = sortItemsByOrder(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  renderItemsTable();
+}
+
+function renderItemsTable() {
+  const keyword = (document.getElementById("itemSearchBox").value || "").trim().toLowerCase();
+  const visibleItems = keyword
+    ? ALL_ITEMS.filter(
+        (i) => i.name.toLowerCase().includes(keyword) || (i.category || "").toLowerCase().includes(keyword)
+      )
+    : ALL_ITEMS;
+
   const tbody = document.getElementById("itemsTbody");
   tbody.innerHTML = "";
-  items.forEach((item, idx) => {
+
+  if (visibleItems.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);">找不到符合的商品</td></tr>';
+    return;
+  }
+
+  visibleItems.forEach((item) => {
+    // 用「完整清單」裡的位置判斷是否已經到最上/最下面，跟搜尋篩選無關
+    const idx = ALL_ITEMS.findIndex((i) => i.id === item.id);
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td><img src="${item.image}" style="width:60px;height:44px;object-fit:cover;border-radius:6px;" /></td>
@@ -122,7 +146,7 @@ async function loadItems() {
       <td><span class="badge ${item.active ? "on" : "off"}">${item.active ? "上架中" : "已下架"}</span></td>
       <td class="row-actions">
         <button class="move-up" ${idx === 0 ? "disabled" : ""} title="往上移">▲</button>
-        <button class="move-down" ${idx === items.length - 1 ? "disabled" : ""} title="往下移">▼</button>
+        <button class="move-down" ${idx === ALL_ITEMS.length - 1 ? "disabled" : ""} title="往下移">▼</button>
         <button class="edit">編輯</button>
         <button class="edit toggle">${item.active ? "下架" : "上架"}</button>
         <button class="del">刪除</button>
@@ -133,8 +157,8 @@ async function loadItems() {
       imgEl.onerror = null;
       imgEl.src = PLACEHOLDER_IMG;
     };
-    tr.querySelector(".move-up").onclick = () => moveItem(items, idx, -1);
-    tr.querySelector(".move-down").onclick = () => moveItem(items, idx, 1);
+    tr.querySelector(".move-up").onclick = () => moveItem(idx, -1);
+    tr.querySelector(".move-down").onclick = () => moveItem(idx, 1);
     tr.querySelector(".edit").onclick = () => fillForm(item);
     tr.querySelector(".toggle").onclick = () => toggleActive(item);
     tr.querySelector(".del").onclick = () => deleteItem(item.id);
@@ -142,13 +166,15 @@ async function loadItems() {
   });
 }
 
-// 把目前排序好的商品清單裡，第 idx 筆和它上面（direction=-1）或下面（direction=1）
-// 那筆互換順序，然後把「目前這份排序」整批寫回資料庫（幫每筆商品補上 sortOrder）。
-async function moveItem(sortedItems, idx, direction) {
-  const targetIdx = idx + direction;
-  if (targetIdx < 0 || targetIdx >= sortedItems.length) return;
+document.getElementById("itemSearchBox").addEventListener("input", renderItemsTable);
 
-  const items = sortedItems.slice();
+// 把完整清單（ALL_ITEMS）裡第 idx 筆和它上面（direction=-1）或下面（direction=1）
+// 那筆互換順序，然後把「目前這份排序」整批寫回資料庫（幫每筆商品補上 sortOrder）。
+async function moveItem(idx, direction) {
+  const targetIdx = idx + direction;
+  if (targetIdx < 0 || targetIdx >= ALL_ITEMS.length) return;
+
+  const items = ALL_ITEMS.slice();
   [items[idx], items[targetIdx]] = [items[targetIdx], items[idx]];
 
   await Promise.all(items.map((item, i) => updateDoc(doc(db, "items", item.id), { sortOrder: i })));
@@ -251,11 +277,13 @@ async function loadOrders() {
     const totalText = o.paymentMethod === "糖果" ? `🍬 ${o.total}` : `💵 NT$ ${o.total}`;
     const createdAtText = o.createdAt && o.createdAt.toDate ? o.createdAt.toDate().toLocaleString("zh-TW") : "";
     const tr = document.createElement("tr");
+    const genderText = o.characterGender === "女角" ? "🙍‍♀️ 女角" : o.characterGender === "男角" ? "🙎‍♂️ 男角" : "-";
     tr.innerHTML = `
       <td>${o.id}</td>
       <td>${createdAtText}</td>
       <td>${o.buyerName}</td>
       <td>${o.contact}</td>
+      <td>${genderText}</td>
       <td>${icon} ${o.paymentMethod}</td>
       <td>${detail}</td>
       <td>${totalText}</td>
