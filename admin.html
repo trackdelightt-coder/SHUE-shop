@@ -39,8 +39,15 @@
           <input id="fName" placeholder="例：北歐風雙人沙發" />
         </div>
         <div>
-          <label>分類（可加 emoji，例如 🛋️ 客廳）</label>
-          <input id="fCategory" placeholder="例：🛋️ 客廳" />
+          <label>分類</label>
+          <select id="fCategory">
+            <option value="New">New</option>
+            <option value="可互動">可互動</option>
+            <option value="熊">熊</option>
+            <option value="樹">樹</option>
+            <option value="花盆">花盆</option>
+            <option value="特殊">特殊</option>
+          </select>
         </div>
         <div>
           <label>🍬 糖果價</label>
@@ -69,7 +76,18 @@
         <button id="seedBtn" class="secondary-btn" type="button">📦 匯入 6 筆範例商品（僅第一次使用時按一次）</button>
       </div>
 
-      <input id="itemSearchBox" class="search-box" type="text" placeholder="🔍 搜尋商品名稱..." style="max-width:360px;" />
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+        <input id="itemSearchBox" class="search-box" type="text" placeholder="🔍 搜尋商品名稱..." style="max-width:280px; margin-bottom:0;" />
+        <select id="categoryFilter" style="max-width:180px;">
+          <option value="">家具(全)</option>
+          <option value="New">New</option>
+          <option value="可互動">可互動</option>
+          <option value="熊">熊</option>
+          <option value="樹">樹</option>
+          <option value="花盆">花盆</option>
+          <option value="特殊">特殊</option>
+        </select>
+      </div>
 
       <table>
         <thead>
@@ -82,7 +100,7 @@
     <div id="ordersPanel" style="display:none;">
       <table>
         <thead>
-          <tr><th>訂單編號</th><th>時間</th><th>買家</th><th>聯絡方式</th><th>角色</th><th>付款方式</th><th>明細</th><th>總金額</th><th>狀態</th></tr>
+          <tr><th>訂單編號</th><th>時間</th><th>買家</th><th>聯絡方式</th><th>角色</th><th>付款方式</th><th>明細</th><th>總金額</th><th>狀態</th><th>操作</th></tr>
         </thead>
         <tbody id="ordersTbody"></tbody>
       </table>
