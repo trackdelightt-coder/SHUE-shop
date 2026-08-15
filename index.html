@@ -21,6 +21,25 @@
 
   <div class="layout">
     <div>
+      <section id="seriesSection" class="series-section">
+        <div class="series-heading-row">
+          <div>
+            <h2>🎁 幸運盒系列</h2>
+            <div class="series-subtitle">依推出時間瀏覽系列，點進去看合輯與系列商品</div>
+          </div>
+          <div class="series-sort-toggle" aria-label="系列排序">
+            <button type="button" id="seriesNewestBtn" class="active">最新 → 最舊</button>
+            <button type="button" id="seriesOldestBtn">最舊 → 最新</button>
+          </div>
+        </div>
+        <div id="seriesGrid" class="series-grid"></div>
+      </section>
+
+      <section id="seriesHero" class="series-hero" style="display:none;"></section>
+      <div class="product-section-heading">
+        <h2 id="productSectionTitle">📦 全部家具</h2>
+        <button type="button" id="backToAllBtn" class="series-back-btn" style="display:none;">← 回全部家具</button>
+      </div>
       <input id="searchBox" class="search-box" type="text" placeholder="🔍 搜尋商品名稱..." />
       <div class="filters" id="filters"></div>
       <div class="grid" id="grid"></div>

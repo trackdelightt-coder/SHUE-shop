@@ -61,13 +61,18 @@ onAuthStateChanged(auth, (user) => {
 async function showAdmin() {
   document.getElementById("loginView").style.display = "none";
   document.getElementById("adminView").style.display = "block";
-  await loadItems();
+  await Promise.all([loadItems(), loadSeries()]);
 }
 
 // ---------- Tabs ----------
 document.getElementById("tabItems").onclick = () => {
   setActiveTab("tabItems");
   loadItems();
+};
+
+document.getElementById("tabSeries").onclick = () => {
+  setActiveTab("tabSeries");
+  loadSeries();
 };
 
 document.getElementById("tabOrders").onclick = () => {
@@ -83,12 +88,166 @@ document.getElementById("tabSettings").onclick = () => {
 };
 
 function setActiveTab(activeId) {
-  ["tabItems", "tabOrders", "tabSettings"].forEach((id) => {
+  ["tabItems", "tabSeries", "tabOrders", "tabSettings"].forEach((id) => {
     document.getElementById(id).classList.toggle("active", id === activeId);
   });
   document.getElementById("itemsPanel").style.display = activeId === "tabItems" ? "block" : "none";
+  document.getElementById("seriesPanel").style.display = activeId === "tabSeries" ? "block" : "none";
   document.getElementById("ordersPanel").style.display = activeId === "tabOrders" ? "block" : "none";
   document.getElementById("settingsPanel").style.display = activeId === "tabSettings" ? "block" : "none";
+}
+
+
+// ---------- Lucky-box Series ----------
+const DEFAULT_SERIES_NAMES = [
+  "夢幻樂園幸運盒",
+  "口袋夏日幸運盒",
+  "黑暗霓虹派對幸運盒",
+  "沙灘拍照區幸運箱",
+  "宴會廳幸運箱",
+  "熱帶夏季幸運盒",
+  "夏日霓虹派對幸運盒",
+  "古董道具店幸運盒",
+  "治癒衝刺幸運盒",
+  "🧸睡熊幸運盒",
+  "秘世界幸運盒",
+  "夏日天堂幸運盒",
+  "時光之愛幸運盒",
+  "MstarLand幸運盒",
+  "沙灘裝飾套裝幸運盒",
+];
+
+let ALL_SERIES = [];
+
+function sortSeries(items) {
+  return items.slice().sort((a,b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+}
+
+async function loadSeries() {
+  const snap = await getDoc(doc(db, "settings", "series"));
+  ALL_SERIES = sortSeries(snap.exists() && Array.isArray(snap.data().items) ? snap.data().items : []);
+  renderSeriesAdmin();
+  populateSeriesSelect();
+}
+
+async function persistSeries() {
+  await setDoc(doc(db, "settings", "series"), { items: ALL_SERIES }, { merge: false });
+}
+
+function populateSeriesSelect(selectedValue) {
+  const select = document.getElementById("fSeries");
+  if (!select) return;
+  const selected = selectedValue !== undefined ? selectedValue : select.value;
+  select.innerHTML = '<option value="">無系列／一般家具</option>';
+  ALL_SERIES.filter((s) => s.active !== false).forEach((series) => {
+    const opt = document.createElement("option");
+    opt.value = series.id;
+    opt.textContent = series.name;
+    select.appendChild(opt);
+  });
+  select.value = selected || "";
+}
+
+function renderSeriesAdmin() {
+  const box = document.getElementById("seriesAdminList");
+  if (!box) return;
+  box.innerHTML = "";
+  if (!ALL_SERIES.length) {
+    box.innerHTML = '<div style="color:var(--muted);">還沒有系列。可以按上方「建立 15 個預設幸運盒系列」。</div>';
+    return;
+  }
+  ALL_SERIES.forEach((series) => {
+    const row = document.createElement("div");
+    row.className = "admin-series-row";
+    row.innerHTML = `
+      <img src="${series.coverImage || PLACEHOLDER_IMG}" alt="${series.name}" />
+      <div><strong>${series.name}</strong><div class="admin-series-meta">${series.active === false ? "已隱藏" : "顯示中"}</div></div>
+      <div class="admin-series-url">${series.coverImage ? "已設定合輯圖" : "尚未設定合輯圖"}</div>
+      <div class="admin-series-order">順序 ${series.sortOrder ?? "-"}</div>
+      <div class="row-actions"><button class="move-up" title="往舊的方向移一格">▲</button><button class="move-down" title="往新的方向移一格">▼</button><button class="edit">編輯</button><button class="toggle">${series.active === false ? "顯示" : "隱藏"}</button><button class="del">刪除</button></div>`;
+    const img = row.querySelector("img"); img.onerror = () => { img.onerror=null; img.src=PLACEHOLDER_IMG; };
+    const seriesIndex = ALL_SERIES.findIndex((x) => x.id === series.id);
+    const upBtn = row.querySelector(".move-up");
+    const downBtn = row.querySelector(".move-down");
+    upBtn.disabled = seriesIndex <= 0;
+    downBtn.disabled = seriesIndex < 0 || seriesIndex >= ALL_SERIES.length - 1;
+    upBtn.onclick = () => moveSeries(seriesIndex, -1);
+    downBtn.onclick = () => moveSeries(seriesIndex, 1);
+    row.querySelector(".edit").onclick = () => fillSeriesForm(series);
+    row.querySelector(".toggle").onclick = async () => { series.active = series.active === false; await persistSeries(); loadSeries(); };
+    row.querySelector(".del").onclick = async () => {
+      if(confirm(`確定刪除「${series.name}」系列嗎？商品本身不會刪除。`)){
+        ALL_SERIES = ALL_SERIES.filter((x) => x.id !== series.id);
+        await persistSeries();
+        loadSeries();
+      }
+    };
+    box.appendChild(row);
+  });
+}
+
+async function moveSeries(index, direction) {
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= ALL_SERIES.length) return;
+  const items = sortSeries(ALL_SERIES);
+  [items[index], items[target]] = [items[target], items[index]];
+  items.forEach((item, idx) => { item.sortOrder = idx + 1; });
+  ALL_SERIES = items;
+  await persistSeries();
+  await loadSeries();
+}
+
+function fillSeriesForm(series) {
+  document.getElementById("seriesId").value = series.id;
+  document.getElementById("sName").value = series.name || "";
+  document.getElementById("sSortOrder").value = series.sortOrder ?? "";
+  document.getElementById("sCoverImage").value = series.coverImage || "";
+  document.getElementById("sDescription").value = series.description || "";
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
+function clearSeriesForm() {
+  document.getElementById("seriesId").value = "";
+  document.getElementById("sName").value = "";
+  document.getElementById("sSortOrder").value = "";
+  document.getElementById("sCoverImage").value = "";
+  document.getElementById("sDescription").value = "";
+}
+
+async function saveSeries() {
+  const id = document.getElementById("seriesId").value;
+  const name = document.getElementById("sName").value.trim();
+  const sortOrder = Number(document.getElementById("sSortOrder").value);
+  if (!name || !Number.isFinite(sortOrder)) { alert("請填寫系列名稱與時間排序。"); return; }
+  const payload = {
+    name,
+    sortOrder,
+    coverImage: document.getElementById("sCoverImage").value.trim(),
+    description: document.getElementById("sDescription").value.trim(),
+    active: true,
+  };
+  if (id) {
+    const idx = ALL_SERIES.findIndex((x) => x.id === id);
+    if (idx >= 0) ALL_SERIES[idx] = { ...ALL_SERIES[idx], ...payload };
+  } else {
+    ALL_SERIES.push({ id: `series_${Date.now()}`, ...payload });
+  }
+  ALL_SERIES = sortSeries(ALL_SERIES);
+  await persistSeries();
+  clearSeriesForm();
+  await loadSeries();
+}
+
+async function seedDefaultSeries() {
+  const existingNames = new Set(ALL_SERIES.map((s) => s.name));
+  const missing = DEFAULT_SERIES_NAMES.map((name,idx) => ({name,sortOrder:idx+1})).filter((x) => !existingNames.has(x.name));
+  if (!missing.length) { alert("15 個預設系列都已經存在了。"); return; }
+  if (!confirm(`要建立 ${missing.length} 個尚未存在的預設系列嗎？`)) return;
+  missing.forEach((x, idx) => ALL_SERIES.push({ id: `default_${DEFAULT_SERIES_NAMES.indexOf(x.name)+1}`, ...x, coverImage:"", description:"", active:true }));
+  ALL_SERIES = sortSeries(ALL_SERIES);
+  await persistSeries();
+  await loadSeries();
+  alert("預設幸運盒系列已建立。");
 }
 
 // ---------- Items ----------
@@ -137,7 +296,7 @@ function renderItemsTable() {
   tbody.innerHTML = "";
 
   if (visibleItems.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);">找不到符合的商品</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);">找不到符合的商品</td></tr>';
     return;
   }
 
@@ -148,6 +307,7 @@ function renderItemsTable() {
     tr.innerHTML = `
       <td><img src="${item.image}" style="width:60px;height:44px;object-fit:cover;border-radius:6px;" /></td>
       <td>${item.name}</td>
+      <td>${ALL_SERIES.find((x) => x.id === item.seriesId)?.name || item.seriesName || "—"}</td>
       <td>${item.category}</td>
       <td>🍬 ${item.priceCandy}</td>
       <td>💵 NT$ ${item.priceCash}</td>
@@ -194,6 +354,7 @@ async function moveItem(idx, direction) {
 function fillForm(item) {
   document.getElementById("itemId").value = item.id;
   document.getElementById("fName").value = item.name;
+  populateSeriesSelect(item.seriesId || "");
 
   const categorySelect = document.getElementById("fCategory");
   categorySelect.querySelectorAll("option[data-legacy]").forEach((o) => o.remove());
@@ -224,6 +385,7 @@ function clearForm() {
     (id) => (document.getElementById(id).value = "")
   );
   document.getElementById("fImage").value = IMAGE_URL_TEMPLATE;
+  populateSeriesSelect("");
   const categorySelect = document.getElementById("fCategory");
   categorySelect.querySelectorAll("option[data-legacy]").forEach((o) => o.remove());
   categorySelect.value = CATEGORY_OPTIONS[0];
@@ -235,6 +397,8 @@ async function saveItem() {
   const priceCash = Number(document.getElementById("fPriceCash").value);
   const payload = {
     name: document.getElementById("fName").value.trim(),
+    seriesId: document.getElementById("fSeries").value || "",
+    seriesName: ALL_SERIES.find((x) => x.id === document.getElementById("fSeries").value)?.name || "",
     category: document.getElementById("fCategory").value,
     priceCandy,
     priceCash,
@@ -397,3 +561,8 @@ document.getElementById("saveItemBtn").onclick = (e) => {
   e.preventDefault();
   saveItem();
 };
+
+
+document.getElementById("saveSeriesBtn").onclick = (e) => { e.preventDefault(); saveSeries(); };
+document.getElementById("clearSeriesBtn").onclick = (e) => { e.preventDefault(); clearSeriesForm(); };
+document.getElementById("seedSeriesBtn").onclick = (e) => { e.preventDefault(); seedDefaultSeries(); };

@@ -26,6 +26,7 @@
   <div id="adminView" class="admin-wrap" style="display:none;">
     <div class="tabs">
       <button id="tabItems" class="active">商品管理</button>
+      <button id="tabSeries">幸運盒系列</button>
       <button id="tabOrders">訂單管理</button>
       <button id="tabSettings">商店設定</button>
       <button id="logoutBtn" style="margin-left:auto;">登出</button>
@@ -48,6 +49,10 @@
             <option value="花盆">花盆</option>
             <option value="特殊">特殊</option>
           </select>
+        </div>
+        <div>
+          <label>所屬幸運盒系列</label>
+          <select id="fSeries"><option value="">無系列／一般家具</option></select>
         </div>
         <div>
           <label>🍬 糖果價</label>
@@ -91,10 +96,39 @@
 
       <table>
         <thead>
-          <tr><th>圖片</th><th>名稱</th><th>分類</th><th>🍬 糖果價</th><th>💵 現金價</th><th>庫存</th><th>狀態</th><th>操作</th></tr>
+          <tr><th>圖片</th><th>名稱</th><th>系列</th><th>分類</th><th>🍬 糖果價</th><th>💵 現金價</th><th>庫存</th><th>狀態</th><th>操作</th></tr>
         </thead>
         <tbody id="itemsTbody"></tbody>
       </table>
+    </div>
+
+
+    <div id="seriesPanel" style="display:none;">
+      <div class="form-grid" id="seriesForm">
+        <input type="hidden" id="seriesId" />
+        <div>
+          <label>系列名稱</label>
+          <input id="sName" placeholder="例：夢幻樂園幸運盒" />
+        </div>
+        <div>
+          <label>時間排序（1 最舊，數字越大越新）</label>
+          <input id="sSortOrder" type="number" min="1" placeholder="例：1" />
+        </div>
+        <div class="full">
+          <label>系列合輯大圖網址</label>
+          <input id="sCoverImage" placeholder="https://..." />
+        </div>
+        <div class="full">
+          <label>系列介紹（選填）</label>
+          <textarea id="sDescription" rows="3"></textarea>
+        </div>
+        <button id="saveSeriesBtn" class="primary-submit">新增 / 儲存系列</button>
+        <button id="clearSeriesBtn" class="secondary-btn" type="button">清空表單</button>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0;">
+        <button id="seedSeriesBtn" class="secondary-btn" type="button">🎁 建立 15 個預設幸運盒系列</button>
+      </div>
+      <div id="seriesAdminList" class="admin-series-list"></div>
     </div>
 
     <div id="ordersPanel" style="display:none;">

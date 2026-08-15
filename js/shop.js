@@ -35,6 +35,9 @@ function corsProxyImage(url) {
 }
 
 let ITEMS = [];
+let SERIES = [];
+let SERIES_ORDER = "newest";
+let ACTIVE_SERIES_ID = "";
 let CATEGORY = "全部";
 let SEARCH_KEYWORD = "";
 // 同一筆訂單只能用一種付款方式（糖果 或 現金），所以用全域變數記錄目前選的付款方式
@@ -77,6 +80,137 @@ function sortItemsByOrder(items) {
     .map((x) => x.item);
 }
 
+
+const DEFAULT_SERIES = [
+  "夢幻樂園幸運盒",
+  "口袋夏日幸運盒",
+  "黑暗霓虹派對幸運盒",
+  "沙灘拍照區幸運箱",
+  "宴會廳幸運箱",
+  "熱帶夏季幸運盒",
+  "夏日霓虹派對幸運盒",
+  "古董道具店幸運盒",
+  "治癒衝刺幸運盒",
+  "🧸睡熊幸運盒",
+  "秘世界幸運盒",
+  "夏日天堂幸運盒",
+  "時光之愛幸運盒",
+  "MstarLand幸運盒",
+  "沙灘裝飾套裝幸運盒",
+];
+
+function fallbackSeries() {
+  return DEFAULT_SERIES.map((name, idx) => ({
+    id: `default-${idx + 1}`,
+    name,
+    coverImage: "",
+    description: "",
+    sortOrder: idx + 1,
+    active: true,
+    fallback: true,
+  }));
+}
+
+async function loadSeries() {
+  try {
+    const snap = await getDoc(doc(db, "settings", "series"));
+    SERIES = snap.exists() && Array.isArray(snap.data().items) ? snap.data().items.filter((x) => x.active !== false) : [];
+    if (SERIES.length === 0) SERIES = fallbackSeries();
+  } catch (err) {
+    console.warn("[Firestore] 系列資料尚未建立，先使用預設系列名稱。", err);
+    SERIES = fallbackSeries();
+  }
+  renderSeries();
+}
+
+function seriesItemCount(series) {
+  return ITEMS.filter((item) => item.seriesId === series.id || (!item.seriesId && item.seriesName === series.name)).length;
+}
+
+function sortedSeries() {
+  const list = SERIES.slice().sort((a,b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+  return SERIES_ORDER === "newest" ? list.reverse() : list;
+}
+
+function seriesCover(series) {
+  if (series.coverImage) return series.coverImage;
+  const firstItem = ITEMS.find((item) => item.seriesId === series.id || (!item.seriesId && item.seriesName === series.name));
+  return firstItem?.image || PLACEHOLDER_IMG;
+}
+
+function renderSeries() {
+  const grid = document.getElementById("seriesGrid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  const list = sortedSeries();
+  if (!list.length) {
+    grid.innerHTML = '<div class="series-empty">目前還沒有系列資料。</div>';
+    return;
+  }
+  list.forEach((series) => {
+    const card = document.createElement("article");
+    card.className = "series-card";
+    card.innerHTML = `
+      <img src="${seriesCover(series)}" alt="${series.name}" />
+      <div class="series-card-body">
+        <div class="series-card-title">${series.name}</div>
+        <div class="series-card-count">${seriesItemCount(series)} 件家具</div>
+      </div>`;
+    const img = card.querySelector("img");
+    img.onerror = () => { img.onerror = null; img.src = PLACEHOLDER_IMG; };
+    card.onclick = () => openSeries(series.id);
+    grid.appendChild(card);
+  });
+}
+
+function openSeries(seriesId) {
+  ACTIVE_SERIES_ID = seriesId;
+  CATEGORY = "全部";
+  SEARCH_KEYWORD = "";
+  document.getElementById("searchBox").value = "";
+  const series = SERIES.find((x) => x.id === seriesId);
+  const hero = document.getElementById("seriesHero");
+  const title = document.getElementById("productSectionTitle");
+  const backBtn = document.getElementById("backToAllBtn");
+  const section = document.getElementById("seriesSection");
+  if (series) {
+    hero.innerHTML = `
+      <img src="${seriesCover(series)}" alt="${series.name}" />
+      <div class="series-hero-body">
+        <h2 class="series-hero-title">${series.name}</h2>
+        ${series.description ? `<p class="series-hero-desc">${series.description}</p>` : ""}
+      </div>`;
+    const img = hero.querySelector("img");
+    img.onerror = () => { img.onerror = null; img.src = PLACEHOLDER_IMG; };
+    hero.style.display = "block";
+    title.textContent = `🎁 ${series.name} 商品`;
+    backBtn.style.display = "inline-block";
+    section.style.display = "none";
+  }
+  renderFilters();
+  renderGrid();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function closeSeries() {
+  ACTIVE_SERIES_ID = "";
+  CATEGORY = "全部";
+  document.getElementById("seriesHero").style.display = "none";
+  document.getElementById("seriesHero").innerHTML = "";
+  document.getElementById("productSectionTitle").textContent = "📦 全部家具";
+  document.getElementById("backToAllBtn").style.display = "none";
+  document.getElementById("seriesSection").style.display = "block";
+  renderFilters();
+  renderGrid();
+}
+
+function setSeriesOrder(order) {
+  SERIES_ORDER = order;
+  document.getElementById("seriesNewestBtn")?.classList.toggle("active", order === "newest");
+  document.getElementById("seriesOldestBtn")?.classList.toggle("active", order === "oldest");
+  renderSeries();
+}
+
 async function loadItems() {
   try {
     const snap = await getDocs(collection(db, "items"));
@@ -92,6 +226,7 @@ async function loadItems() {
   }
   renderFilters();
   renderGrid();
+  renderSeries();
   renderCart();
 }
 
@@ -112,7 +247,11 @@ async function loadAnnouncement() {
 }
 
 function renderFilters() {
-  const cats = ["全部", ...new Set(ITEMS.map((i) => i.category))];
+  const series = SERIES.find((x) => x.id === ACTIVE_SERIES_ID);
+  const baseItems = ACTIVE_SERIES_ID
+    ? ITEMS.filter((i) => i.seriesId === ACTIVE_SERIES_ID || (series && !i.seriesId && i.seriesName === series.name))
+    : ITEMS;
+  const cats = ["全部", ...new Set(baseItems.map((i) => i.category).filter(Boolean))];
   const el = document.getElementById("filters");
   el.innerHTML = "";
   cats.forEach((c) => {
@@ -132,10 +271,12 @@ function renderGrid() {
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
   const keyword = SEARCH_KEYWORD.trim().toLowerCase();
+  const activeSeries = SERIES.find((x) => x.id === ACTIVE_SERIES_ID);
   const list = ITEMS.filter((i) => {
+    const matchSeries = !ACTIVE_SERIES_ID || i.seriesId === ACTIVE_SERIES_ID || (activeSeries && !i.seriesId && i.seriesName === activeSeries.name);
     const matchCategory = CATEGORY === "全部" || i.category === CATEGORY;
     const matchKeyword = !keyword || i.name.toLowerCase().includes(keyword);
-    return matchCategory && matchKeyword;
+    return matchSeries && matchCategory && matchKeyword;
   });
 
   if (list.length === 0) {
@@ -461,5 +602,8 @@ document.getElementById("searchBox").addEventListener("input", (e) => {
 });
 
 document.getElementById("checkoutBtn").addEventListener("click", checkout);
-loadItems();
+document.getElementById("seriesNewestBtn")?.addEventListener("click", () => setSeriesOrder("newest"));
+document.getElementById("seriesOldestBtn")?.addEventListener("click", () => setSeriesOrder("oldest"));
+document.getElementById("backToAllBtn")?.addEventListener("click", closeSeries);
+Promise.all([loadItems(), loadSeries()]);
 loadAnnouncement();
