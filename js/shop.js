@@ -117,7 +117,7 @@ function renderFilters() {
   el.innerHTML = "";
   cats.forEach((c) => {
     const btn = document.createElement("button");
-    btn.textContent = c;
+    btn.textContent = c === "全部" ? "家具(全)" : c;
     if (c === CATEGORY) btn.classList.add("active");
     btn.onclick = () => {
       CATEGORY = c;

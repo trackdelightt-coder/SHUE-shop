@@ -105,6 +105,9 @@ function sortItemsByOrder(items) {
     .map((x) => x.item);
 }
 
+// 固定的分類清單（如果之後想增加/修改分類，跟我說一聲，我幫妳改）
+const CATEGORY_OPTIONS = ["New", "可互動", "熊", "樹", "花盆", "特殊"];
+
 // ALL_ITEMS 存整份、已經照排序排好的商品清單（不受搜尋框影響），
 // 搬移商品順序（▲▼）一律用這份完整清單的位置去計算，這樣即使搜尋框正在篩選畫面上只顯示部分商品，
 // 順序調整還是會對到正確的商品，不會跑掉。
@@ -118,11 +121,17 @@ async function loadItems() {
 
 function renderItemsTable() {
   const keyword = (document.getElementById("itemSearchBox").value || "").trim().toLowerCase();
-  const visibleItems = keyword
-    ? ALL_ITEMS.filter(
-        (i) => i.name.toLowerCase().includes(keyword) || (i.category || "").toLowerCase().includes(keyword)
-      )
-    : ALL_ITEMS;
+  const category = document.getElementById("categoryFilter").value;
+
+  let visibleItems = ALL_ITEMS;
+  if (category) {
+    visibleItems = visibleItems.filter((i) => i.category === category);
+  }
+  if (keyword) {
+    visibleItems = visibleItems.filter(
+      (i) => i.name.toLowerCase().includes(keyword) || (i.category || "").toLowerCase().includes(keyword)
+    );
+  }
 
   const tbody = document.getElementById("itemsTbody");
   tbody.innerHTML = "";
@@ -167,6 +176,7 @@ function renderItemsTable() {
 }
 
 document.getElementById("itemSearchBox").addEventListener("input", renderItemsTable);
+document.getElementById("categoryFilter").addEventListener("change", renderItemsTable);
 
 // 把完整清單（ALL_ITEMS）裡第 idx 筆和它上面（direction=-1）或下面（direction=1）
 // 那筆互換順序，然後把「目前這份排序」整批寫回資料庫（幫每筆商品補上 sortOrder）。
@@ -184,7 +194,20 @@ async function moveItem(idx, direction) {
 function fillForm(item) {
   document.getElementById("itemId").value = item.id;
   document.getElementById("fName").value = item.name;
-  document.getElementById("fCategory").value = item.category;
+
+  const categorySelect = document.getElementById("fCategory");
+  categorySelect.querySelectorAll("option[data-legacy]").forEach((o) => o.remove());
+  if (item.category && !CATEGORY_OPTIONS.includes(item.category)) {
+    // 舊商品用的是以前的自訂分類文字，不在新的固定清單裡，
+    // 先暫時加一個選項顯示原本的值，避免存檔時被誤蓋掉，建議之後手動改選新分類。
+    const opt = document.createElement("option");
+    opt.value = item.category;
+    opt.textContent = `${item.category}（舊分類，建議改選新的）`;
+    opt.dataset.legacy = "true";
+    categorySelect.appendChild(opt);
+  }
+  categorySelect.value = item.category;
+
   document.getElementById("fPriceCandy").value = item.priceCandy;
   document.getElementById("fPriceCash").value = item.priceCash;
   document.getElementById("fStock").value = item.stock;
@@ -197,10 +220,13 @@ function fillForm(item) {
 const IMAGE_URL_TEMPLATE = "https://drive.google.com/thumbnail?id=你的檔案ID&sz=w1000";
 
 function clearForm() {
-  ["itemId", "fName", "fCategory", "fPriceCandy", "fPriceCash", "fStock", "fDesc"].forEach(
+  ["itemId", "fName", "fPriceCandy", "fPriceCash", "fStock", "fDesc"].forEach(
     (id) => (document.getElementById(id).value = "")
   );
   document.getElementById("fImage").value = IMAGE_URL_TEMPLATE;
+  const categorySelect = document.getElementById("fCategory");
+  categorySelect.querySelectorAll("option[data-legacy]").forEach((o) => o.remove());
+  categorySelect.value = CATEGORY_OPTIONS[0];
 }
 
 async function saveItem() {
@@ -209,7 +235,7 @@ async function saveItem() {
   const priceCash = Number(document.getElementById("fPriceCash").value);
   const payload = {
     name: document.getElementById("fName").value.trim(),
-    category: document.getElementById("fCategory").value.trim() || "未分類",
+    category: document.getElementById("fCategory").value,
     priceCandy,
     priceCash,
     stock: Number(document.getElementById("fStock").value) || 0,
@@ -298,14 +324,55 @@ async function loadOrders() {
             .join("")}
         </select>
       </td>
+      <td><button class="del">刪除</button></td>
     `;
-    tr.querySelector("select").onchange = (e) => updateOrderStatus(o.id, e.target.value);
+    tr.querySelector("select").onchange = (e) => updateOrderStatus(o, e.target.value);
+    tr.querySelector(".del").onclick = () => deleteOrder(o);
     tbody.appendChild(tr);
   });
 }
 
-async function updateOrderStatus(id, status) {
-  await updateDoc(doc(db, "orders", id), { status });
+// 幫訂單裡每一樣商品「加回」或「扣掉」庫存數量。
+// 用讀取現在的庫存、再寫回新數字的方式（不是資料庫交易），
+// 因為後台通常只有妳自己在操作，不太會同時有兩個人一起改庫存，用簡單的方式就夠了。
+async function adjustStockForOrder(order, sign) {
+  const items = order.items || [];
+  await Promise.all(
+    items.map(async (i) => {
+      const itemRef = doc(db, "items", i.id);
+      const snap = await getDoc(itemRef);
+      if (!snap.exists()) return; // 商品可能已經被刪除了，跳過
+      const currentStock = snap.data().stock || 0;
+      const newStock = Math.max(0, currentStock + sign * i.qty);
+      await updateDoc(itemRef, { stock: newStock });
+    })
+  );
+}
+
+// 訂單狀態改成「已取消」時自動把庫存加回去；如果從「已取消」改回其他狀態，
+// 代表取消是誤按的，自動把庫存再扣回去，避免庫存跟實際訂單對不起來。
+async function updateOrderStatus(order, newStatus) {
+  const oldStatus = order.status;
+  if (oldStatus === newStatus) return;
+
+  if (newStatus === "已取消" && oldStatus !== "已取消") {
+    await adjustStockForOrder(order, +1);
+  } else if (oldStatus === "已取消" && newStatus !== "已取消") {
+    await adjustStockForOrder(order, -1);
+  }
+
+  await updateDoc(doc(db, "orders", order.id), { status: newStatus });
+  loadOrders();
+}
+
+async function deleteOrder(order) {
+  const stockWarning =
+    order.status !== "已取消"
+      ? "\n\n⚠️ 這筆訂單還沒有取消，刪除不會自動退回庫存。如果商品其實沒有出貨，建議先把狀態改成「已取消」（庫存會自動加回去）再刪除。"
+      : "";
+  if (!confirm(`確定要刪除這筆訂單嗎？刪除後無法復原。${stockWarning}`)) return;
+  await deleteDoc(doc(db, "orders", order.id));
+  loadOrders();
 }
 
 // ---------- Settings (公告) ----------
