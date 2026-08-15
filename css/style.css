@@ -660,6 +660,9 @@ button.secondary-btn {
 
 .row-actions .del { color: var(--danger); }
 .row-actions .edit { color: var(--teal); }
+.row-actions .move-up,
+.row-actions .move-down { color: var(--primary); font-weight: 800; }
+.row-actions button:disabled { color: var(--muted); opacity: 0.35; cursor: not-allowed; }
 
 .badge {
   display: inline-block;
