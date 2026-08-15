@@ -84,7 +84,7 @@ header.topbar a.admin-link {
 
 .layout {
   display: grid;
-  grid-template-columns: 1fr 340px;
+  grid-template-columns: 1fr 300px;
   gap: 24px;
   padding: 24px;
   max-width: 1200px;
