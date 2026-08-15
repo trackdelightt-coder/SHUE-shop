@@ -56,6 +56,29 @@ header.topbar .sub {
   color: #cdd6f0;
 }
 
+.topbar-links {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.site-footer {
+  text-align: center;
+  padding: 30px 0 16px;
+}
+
+.site-footer a.admin-link-subtle {
+  color: var(--muted);
+  opacity: 0.45;
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.site-footer a.admin-link-subtle:hover {
+  opacity: 0.8;
+}
+
 header.topbar a.admin-link {
   color: #1a1a2e;
   background: linear-gradient(135deg, #ffe29a, var(--primary));
@@ -64,6 +87,20 @@ header.topbar a.admin-link {
   text-decoration: none;
   font-size: 13px;
   font-weight: 700;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+}
+
+.discord-link {
+  color: #fff;
+  background: linear-gradient(135deg, #7289da, #5865f2);
+  padding: 8px 16px;
+  border: none;
+  border-radius: 999px;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
 }
 
@@ -93,6 +130,23 @@ header.topbar a.admin-link {
 
 @media (max-width: 860px) {
   .layout { grid-template-columns: 1fr; }
+}
+
+.search-box {
+  width: 100%;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  background: var(--panel-light);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.search-box::placeholder {
+  color: var(--muted);
 }
 
 .filters {
