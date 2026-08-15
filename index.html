@@ -42,11 +42,27 @@
       <textarea id="note" rows="2" placeholder="備註（選填）"></textarea>
 
       <button class="checkout-btn" id="checkoutBtn">送出訂單</button>
-      <div class="checkout-hint">📸 送出後別忘了截圖這個畫面，私訊 Discord 給賣家確認訂單！</div>
+      <div class="checkout-hint">📸 送出後會出現訂單畫面，按「截圖並複製」就能直接貼到 Discord 給賣家確認訂單！</div>
       <div id="msgBox"></div>
     </aside>
   </div>
 
+  <div id="orderSummaryOverlay" class="order-summary-overlay" style="display:none;">
+    <div class="order-summary-card">
+      <div class="order-summary-capture" id="orderSummaryCapture">
+        <div class="order-summary-title">✅ 訂單已送出</div>
+        <div class="order-summary-body" id="orderSummaryBody"></div>
+        <div class="order-summary-hint">📸 請將這張圖私訊 Discord 給賣家確認訂單～</div>
+      </div>
+      <div class="order-summary-actions">
+        <button type="button" class="order-summary-capture-btn" id="orderSummaryCaptureBtn">📸 截圖並複製</button>
+        <button type="button" class="order-summary-close" id="orderSummaryClose">關閉</button>
+      </div>
+      <div id="captureMsg" class="capture-msg"></div>
+    </div>
+  </div>
+
+  <script src="js/vendor/html2canvas.min.js"></script>
   <script type="module" src="js/shop.js"></script>
 </body>
 </html>
