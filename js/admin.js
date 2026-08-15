@@ -193,10 +193,14 @@ function fillForm(item) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+// Google 雲端硬碟圖片網址的固定格式，只有「你的檔案ID」那一段需要換成自己的
+const IMAGE_URL_TEMPLATE = "https://drive.google.com/thumbnail?id=你的檔案ID&sz=w1000";
+
 function clearForm() {
-  ["itemId", "fName", "fCategory", "fPriceCandy", "fPriceCash", "fStock", "fImage", "fDesc"].forEach(
+  ["itemId", "fName", "fCategory", "fPriceCandy", "fPriceCash", "fStock", "fDesc"].forEach(
     (id) => (document.getElementById(id).value = "")
   );
+  document.getElementById("fImage").value = IMAGE_URL_TEMPLATE;
 }
 
 async function saveItem() {

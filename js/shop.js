@@ -23,6 +23,17 @@ const PLACEHOLDER_IMG =
       "</svg>"
   );
 
+// 商品圖片大多放在 Google 雲端硬碟等外部圖床，這些圖床通常不允許「跨網站讀取圖片內容」，
+// 所以平常瀏覽網頁時圖片看起來正常，但「截圖並複製」用的 html2canvas 工具想把圖片畫進截圖時會被擋下來，
+// 變成截圖裡圖片是空白的（但網頁上看起來還是正常的）。
+// 這裡用一個公開的免費圖片代理服務（images.weserv.nl）幫忙轉一手，讓截圖工具能正常讀到圖片。
+function corsProxyImage(url) {
+  if (!url) return url;
+  if (url.startsWith("data:")) return url; // 本來就是內建的替代圖，不用轉
+  const stripped = url.replace(/^https?:\/\//, "");
+  return `https://images.weserv.nl/?url=${encodeURIComponent(stripped)}`;
+}
+
 let ITEMS = [];
 let CATEGORY = "全部";
 let SEARCH_KEYWORD = "";
@@ -273,10 +284,6 @@ async function checkout() {
     msgBox.innerHTML = '<div class="msg error">請填寫您的暱稱 / 遊戲ID</div>';
     return;
   }
-  if (!contact) {
-    msgBox.innerHTML = '<div class="msg error">請填寫您的 Discord ID，賣家才能聯絡您確認訂單</div>';
-    return;
-  }
 
   const cartEntries = Object.entries(CART); // [ [id, qty], ... ]
   if (cartEntries.length === 0) return;
@@ -350,9 +357,10 @@ function showOrderSummary({ id, total, paymentMethod, items, buyerName, contact,
   const itemsHtml = items
     .map((i) => {
       const lineText = paymentMethod === "糖果" ? `${i.price * i.qty} 糖果` : `NT$ ${i.price * i.qty}`;
+      const thumbSrc = i.image ? corsProxyImage(i.image) : PLACEHOLDER_IMG;
       return `
         <div class="order-summary-item">
-          <img src="${i.image || PLACEHOLDER_IMG}" alt="${i.name}" class="order-summary-thumb" />
+          <img src="${thumbSrc}" data-original="${i.image || ""}" alt="${i.name}" class="order-summary-thumb" />
           <span class="order-summary-item-name">${i.name} x${i.qty}</span>
           <span class="order-summary-item-price">${lineText}</span>
         </div>`;
@@ -373,8 +381,14 @@ function showOrderSummary({ id, total, paymentMethod, items, buyerName, contact,
     .querySelectorAll(".order-summary-thumb")
     .forEach((img) => {
       img.onerror = () => {
-        img.onerror = null;
-        img.src = PLACEHOLDER_IMG;
+        const original = img.dataset.original;
+        // 代理服務失敗的話，先試試看原本的圖片網址（至少畫面上看得到，只是截圖時可能還是會空白）
+        if (original && img.src !== original) {
+          img.src = original;
+        } else {
+          img.onerror = null;
+          img.src = PLACEHOLDER_IMG;
+        }
       };
     });
   document.getElementById("captureMsg").innerHTML = "";
