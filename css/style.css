@@ -140,7 +140,7 @@ header.topbar a.admin-link {
 .card img {
   width: 100%;
   aspect-ratio: 4 / 3;
-  object-fit: cover;
+  object-fit: contain;
   background: rgba(255, 255, 255, 0.08);
 }
 
