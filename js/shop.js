@@ -82,21 +82,22 @@ function sortItemsByOrder(items) {
 
 
 const DEFAULT_SERIES = [
-  "夢幻樂園幸運盒",
-  "口袋夏日幸運盒",
-  "黑暗霓虹派對幸運盒",
-  "沙灘拍照區幸運箱",
-  "宴會廳幸運箱",
-  "熱帶夏季幸運盒",
-  "夏日霓虹派對幸運盒",
-  "古董道具店幸運盒",
-  "治癒衝刺幸運盒",
-  "🧸睡熊幸運盒",
-  "秘世界幸運盒",
-  "夏日天堂幸運盒",
-  "時光之愛幸運盒",
-  "MstarLand幸運盒",
+  // 1 = 最新，數字越大越舊
   "沙灘裝飾套裝幸運盒",
+  "MstarLand幸運盒",
+  "時光之愛幸運盒",
+  "夏日天堂幸運盒",
+  "秘世界幸運盒",
+  "🧸睡熊幸運盒",
+  "治癒衝刺幸運盒",
+  "古董道具店幸運盒",
+  "夏日霓虹派對幸運盒",
+  "熱帶夏季幸運盒",
+  "宴會廳幸運箱",
+  "沙灘拍照區幸運箱",
+  "黑暗霓虹派對幸運盒",
+  "口袋夏日幸運盒",
+  "夢幻樂園幸運盒",
 ];
 
 function fallbackSeries() {
@@ -114,7 +115,17 @@ function fallbackSeries() {
 async function loadSeries() {
   try {
     const snap = await getDoc(doc(db, "settings", "series"));
-    SERIES = snap.exists() && Array.isArray(snap.data().items) ? snap.data().items.filter((x) => x.active !== false) : [];
+    const data = snap.exists() ? snap.data() : {};
+    SERIES = Array.isArray(data.items) ? data.items.filter((x) => x.active !== false) : [];
+
+    // 若買家頁先於後台被打開，舊資料仍以「1=最舊」存在；先在記憶體轉成新版順序，避免畫面顛倒。
+    if (SERIES.length && data.orderMode !== "one-is-newest") {
+      SERIES = SERIES
+        .slice()
+        .sort((a, b) => Number(b.sortOrder || 0) - Number(a.sortOrder || 0))
+        .map((item, idx) => ({ ...item, sortOrder: idx + 1 }));
+    }
+
     if (SERIES.length === 0) SERIES = fallbackSeries();
   } catch (err) {
     console.warn("[Firestore] 系列資料尚未建立，先使用預設系列名稱。", err);
@@ -129,7 +140,7 @@ function seriesItemCount(series) {
 
 function sortedSeries() {
   const list = SERIES.slice().sort((a,b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
-  return SERIES_ORDER === "newest" ? list.reverse() : list;
+  return SERIES_ORDER === "newest" ? list : list.reverse();
 }
 
 function seriesCover(series) {
@@ -246,17 +257,24 @@ async function loadAnnouncement() {
   }
 }
 
+const CATEGORY_OPTIONS = ["可互動", "拍照區", "家具", "裝飾", "植物", "燈飾", "特殊", "熊", "花盆", "雕像"];
+
 function renderFilters() {
-  const series = SERIES.find((x) => x.id === ACTIVE_SERIES_ID);
-  const baseItems = ACTIVE_SERIES_ID
-    ? ITEMS.filter((i) => i.seriesId === ACTIVE_SERIES_ID || (series && !i.seriesId && i.seriesName === series.name))
-    : ITEMS;
-  const cats = ["全部", ...new Set(baseItems.map((i) => i.category).filter(Boolean))];
   const el = document.getElementById("filters");
   el.innerHTML = "";
-  cats.forEach((c) => {
+
+  // 系列頁商品通常不多：不再顯示分類按鈕。
+  if (ACTIVE_SERIES_ID) {
+    el.style.display = "none";
+    CATEGORY = "全部";
+    return;
+  }
+
+  // 只有「全部家具」頁才顯示固定分類，順序照後台建檔規格。
+  el.style.display = "flex";
+  ["全部", ...CATEGORY_OPTIONS].forEach((c) => {
     const btn = document.createElement("button");
-    btn.textContent = c === "全部" ? "家具(全)" : c;
+    btn.textContent = c;
     if (c === CATEGORY) btn.classList.add("active");
     btn.onclick = () => {
       CATEGORY = c;

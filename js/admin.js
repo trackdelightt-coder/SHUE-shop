@@ -100,21 +100,22 @@ function setActiveTab(activeId) {
 
 // ---------- Lucky-box Series ----------
 const DEFAULT_SERIES_NAMES = [
-  "夢幻樂園幸運盒",
-  "口袋夏日幸運盒",
-  "黑暗霓虹派對幸運盒",
-  "沙灘拍照區幸運箱",
-  "宴會廳幸運箱",
-  "熱帶夏季幸運盒",
-  "夏日霓虹派對幸運盒",
-  "古董道具店幸運盒",
-  "治癒衝刺幸運盒",
-  "🧸睡熊幸運盒",
-  "秘世界幸運盒",
-  "夏日天堂幸運盒",
-  "時光之愛幸運盒",
-  "MstarLand幸運盒",
+  // 1 = 最新，數字越大越舊
   "沙灘裝飾套裝幸運盒",
+  "MstarLand幸運盒",
+  "時光之愛幸運盒",
+  "夏日天堂幸運盒",
+  "秘世界幸運盒",
+  "🧸睡熊幸運盒",
+  "治癒衝刺幸運盒",
+  "古董道具店幸運盒",
+  "夏日霓虹派對幸運盒",
+  "熱帶夏季幸運盒",
+  "宴會廳幸運箱",
+  "沙灘拍照區幸運箱",
+  "黑暗霓虹派對幸運盒",
+  "口袋夏日幸運盒",
+  "夢幻樂園幸運盒",
 ];
 
 let ALL_SERIES = [];
@@ -124,14 +125,31 @@ function sortSeries(items) {
 }
 
 async function loadSeries() {
-  const snap = await getDoc(doc(db, "settings", "series"));
-  ALL_SERIES = sortSeries(snap.exists() && Array.isArray(snap.data().items) ? snap.data().items : []);
+  const ref = doc(db, "settings", "series");
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? snap.data() : {};
+  let items = Array.isArray(data.items) ? data.items : [];
+
+  // 舊版規則是「1=最舊」。第一次載入新版後台時自動遷移成「1=最新」，只做一次。
+  if (items.length && data.orderMode !== "one-is-newest") {
+    items = items
+      .slice()
+      .sort((a, b) => Number(b.sortOrder || 0) - Number(a.sortOrder || 0))
+      .map((item, idx) => ({ ...item, sortOrder: idx + 1 }));
+    await setDoc(ref, { items, orderMode: "one-is-newest" }, { merge: false });
+  }
+
+  ALL_SERIES = sortSeries(items);
   renderSeriesAdmin();
   populateSeriesSelect();
 }
 
 async function persistSeries() {
-  await setDoc(doc(db, "settings", "series"), { items: ALL_SERIES }, { merge: false });
+  await setDoc(
+    doc(db, "settings", "series"),
+    { items: ALL_SERIES, orderMode: "one-is-newest" },
+    { merge: false }
+  );
 }
 
 function populateSeriesSelect(selectedValue) {
@@ -164,7 +182,7 @@ function renderSeriesAdmin() {
       <div><strong>${series.name}</strong><div class="admin-series-meta">${series.active === false ? "已隱藏" : "顯示中"}</div></div>
       <div class="admin-series-url">${series.coverImage ? "已設定合輯圖" : "尚未設定合輯圖"}</div>
       <div class="admin-series-order">順序 ${series.sortOrder ?? "-"}</div>
-      <div class="row-actions"><button class="move-up" title="往舊的方向移一格">▲</button><button class="move-down" title="往新的方向移一格">▼</button><button class="edit">編輯</button><button class="toggle">${series.active === false ? "顯示" : "隱藏"}</button><button class="del">刪除</button></div>`;
+      <div class="row-actions"><button class="move-up" title="往前移（更接近最新）">▲</button><button class="move-down" title="往後移（更接近舊）">▼</button><button class="edit">編輯</button><button class="toggle">${series.active === false ? "顯示" : "隱藏"}</button><button class="del">刪除</button></div>`;
     const img = row.querySelector("img"); img.onerror = () => { img.onerror=null; img.src=PLACEHOLDER_IMG; };
     const seriesIndex = ALL_SERIES.findIndex((x) => x.id === series.id);
     const upBtn = row.querySelector(".move-up");
@@ -265,7 +283,7 @@ function sortItemsByOrder(items) {
 }
 
 // 固定的分類清單（如果之後想增加/修改分類，跟我說一聲，我幫妳改）
-const CATEGORY_OPTIONS = ["New", "可互動", "熊", "樹", "花盆", "特殊"];
+const CATEGORY_OPTIONS = ["可互動", "拍照區", "家具", "裝飾", "植物", "燈飾", "特殊", "熊", "花盆", "雕像"];
 
 // ALL_ITEMS 存整份、已經照排序排好的商品清單（不受搜尋框影響），
 // 搬移商品順序（▲▼）一律用這份完整清單的位置去計算，這樣即使搜尋框正在篩選畫面上只顯示部分商品，
@@ -347,7 +365,7 @@ async function moveItem(idx, direction) {
   const items = ALL_ITEMS.slice();
   [items[idx], items[targetIdx]] = [items[targetIdx], items[idx]];
 
-  await Promise.all(items.map((item, i) => updateDoc(doc(db, "items", item.id), { sortOrder: i })));
+  await Promise.all(items.map((item, i) => updateDoc(doc(db, "items", item.id), { sortOrder: i + 1 })));
   loadItems();
 }
 
@@ -414,8 +432,11 @@ async function saveItem() {
   if (id) {
     await updateDoc(doc(db, "items", id), payload);
   } else {
-    // 新商品預設排在最後面（用當下時間當排序值，一定比舊商品大）
-    await addDoc(collection(db, "items"), { ...payload, active: true, sortOrder: Date.now() });
+    // 1 = 最新：新增商品時先把既有商品順序往後推，新商品固定放第 1。
+    await Promise.all(ALL_ITEMS.map((item) =>
+      updateDoc(doc(db, "items", item.id), { sortOrder: Number(item.sortOrder || 0) + 1 })
+    ));
+    await addDoc(collection(db, "items"), { ...payload, active: true, sortOrder: 1 });
   }
   clearForm();
   loadItems();

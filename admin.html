@@ -42,12 +42,16 @@
         <div>
           <label>分類</label>
           <select id="fCategory">
-            <option value="New">New</option>
             <option value="可互動">可互動</option>
-            <option value="熊">熊</option>
-            <option value="樹">樹</option>
-            <option value="花盆">花盆</option>
+            <option value="拍照區">拍照區</option>
+            <option value="家具">家具</option>
+            <option value="裝飾">裝飾</option>
+            <option value="植物">植物</option>
+            <option value="燈飾">燈飾</option>
             <option value="特殊">特殊</option>
+            <option value="熊">熊</option>
+            <option value="花盆">花盆</option>
+            <option value="雕像">雕像</option>
           </select>
         </div>
         <div>
@@ -84,13 +88,17 @@
       <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
         <input id="itemSearchBox" class="search-box" type="text" placeholder="🔍 搜尋商品名稱..." style="max-width:280px; margin-bottom:0;" />
         <select id="categoryFilter" style="max-width:180px;">
-          <option value="">家具(全)</option>
-          <option value="New">New</option>
+          <option value="">全部家具</option>
           <option value="可互動">可互動</option>
-          <option value="熊">熊</option>
-          <option value="樹">樹</option>
-          <option value="花盆">花盆</option>
+          <option value="拍照區">拍照區</option>
+          <option value="家具">家具</option>
+          <option value="裝飾">裝飾</option>
+          <option value="植物">植物</option>
+          <option value="燈飾">燈飾</option>
           <option value="特殊">特殊</option>
+          <option value="熊">熊</option>
+          <option value="花盆">花盆</option>
+          <option value="雕像">雕像</option>
         </select>
       </div>
 
@@ -111,7 +119,7 @@
           <input id="sName" placeholder="例：夢幻樂園幸運盒" />
         </div>
         <div>
-          <label>時間排序（1 最舊，數字越大越新）</label>
+          <label>時間排序（1 = 最新，數字越大越舊）</label>
           <input id="sSortOrder" type="number" min="1" placeholder="例：1" />
         </div>
         <div class="full">
