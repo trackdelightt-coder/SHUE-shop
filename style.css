@@ -1028,3 +1028,32 @@ header.topbar .discord-link .dc-icon {
   .card .meta-row .item-tag { font-size: 9px; padding: 2px 5px; }
   header.topbar .discord-link .dc-icon { font-size: 13px; }
 }
+
+
+/* ===== 817 強制更新 v2：分頁永遠可見＋分類Tag單列 ===== */
+.pagination .page-divider {
+  flex: 0 0 auto;
+  color: rgba(255,255,255,.38);
+  font-weight: 800;
+  user-select: none;
+}
+.card .meta-row {
+  display: grid !important;
+  grid-auto-flow: column !important;
+  grid-auto-columns: max-content !important;
+  justify-content: start !important;
+  align-items: center !important;
+  gap: 5px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  white-space: nowrap !important;
+  flex-wrap: nowrap !important;
+}
+.card .meta-row > * {
+  margin: 0 !important;
+  white-space: nowrap !important;
+}
+@media (max-width: 860px) {
+  .card .meta-row { gap: 4px !important; }
+  .pagination .page-divider { font-size: 13px; }
+}

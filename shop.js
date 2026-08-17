@@ -310,9 +310,10 @@ function renderTagFilters() {
   });
 }
 
-function renderPagination(totalItems) {
+function renderPagination(totalItems, allowPagination = true) {
   const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
   if (CURRENT_PAGE > totalPages) CURRENT_PAGE = totalPages;
+  if (CURRENT_PAGE < 1) CURRENT_PAGE = 1;
 
   const visiblePages = () => {
     const maxButtons = 6;
@@ -324,26 +325,36 @@ function renderPagination(totalItems) {
   };
 
   ["paginationTop","paginationBottom"].forEach(id => {
-    const el=document.getElementById(id); if(!el) return;
-    if (ACTIVE_SERIES_ID) { el.innerHTML=""; el.style.display="none"; return; }
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    // 系列瀏覽本身不分頁；但只要正在搜尋，就是全站搜尋，分頁一定顯示。
+    if (!allowPagination) {
+      el.innerHTML = "";
+      el.style.display = "none";
+      return;
+    }
 
     const pageButtons = visiblePages().map(page =>
-      `<button class="page-number ${page===CURRENT_PAGE?"active":""}" data-page="${page}" aria-label="第 ${page} 頁">${page}</button>`
+      `<button type="button" class="page-number ${page===CURRENT_PAGE?"active":""}" data-page="${page}" aria-label="第 ${page} 頁">${page}</button>`
     ).join("");
 
-    el.style.display="flex";
+    el.style.display = "flex";
     el.innerHTML = `
-      <button class="page-nav prev" ${CURRENT_PAGE===1?"disabled":""}>← 上一頁</button>
+      <button type="button" class="page-nav prev" ${CURRENT_PAGE===1?"disabled":""}>← 上一頁</button>
+      <span class="page-divider" aria-hidden="true">｜</span>
       <div class="page-numbers">${pageButtons}</div>
-      <button class="page-nav next" ${CURRENT_PAGE===totalPages?"disabled":""}>下一頁 →</button>`;
+      <span class="page-divider" aria-hidden="true">｜</span>
+      <button type="button" class="page-nav next" ${CURRENT_PAGE===totalPages?"disabled":""}>下一頁 →</button>`;
 
     const goToPage = (page) => {
       CURRENT_PAGE = page;
       renderGrid();
-      window.scrollTo({top:document.getElementById("productSectionTitle").offsetTop-20,behavior:"smooth"});
+      const anchor = document.getElementById("productSectionTitle");
+      if (anchor) window.scrollTo({top: anchor.offsetTop - 20, behavior:"smooth"});
     };
-    el.querySelector(".prev").onclick=()=>{ if(CURRENT_PAGE>1) goToPage(CURRENT_PAGE-1); };
-    el.querySelector(".next").onclick=()=>{ if(CURRENT_PAGE<totalPages) goToPage(CURRENT_PAGE+1); };
+    el.querySelector(".prev").onclick = () => { if (CURRENT_PAGE > 1) goToPage(CURRENT_PAGE - 1); };
+    el.querySelector(".next").onclick = () => { if (CURRENT_PAGE < totalPages) goToPage(CURRENT_PAGE + 1); };
     el.querySelectorAll(".page-number").forEach(btn => {
       btn.onclick = () => goToPage(Number(btn.dataset.page));
     });
@@ -354,18 +365,27 @@ function renderGrid() {
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
   const keyword = SEARCH_KEYWORD.trim().toLowerCase();
+  const isGlobalSearch = keyword.length > 0;
   const activeSeries = SERIES.find((x) => x.id === ACTIVE_SERIES_ID);
   const list = ITEMS.filter((i) => {
+    const tags = Array.isArray(i.tags) ? i.tags : [];
+    const searchableText = [i.name, i.category, i.seriesName, ...tags].filter(Boolean).join(" ").toLowerCase();
+
+    // 有搜尋字時一律全站搜尋，不受目前系列、主分類、Tag 篩選限制。
+    if (isGlobalSearch) return searchableText.includes(keyword);
+
     const matchSeries = !ACTIVE_SERIES_ID || i.seriesId === ACTIVE_SERIES_ID || (activeSeries && !i.seriesId && i.seriesName === activeSeries.name);
     const matchCategory = CATEGORY === "全部" || i.category === CATEGORY;
-    const matchKeyword = !keyword || i.name.toLowerCase().includes(keyword);
-    const matchTag = ACTIVE_TAG === "全部" || (Array.isArray(i.tags) && i.tags.includes(ACTIVE_TAG));
-    return matchSeries && matchCategory && matchKeyword && matchTag;
+    const matchTag = ACTIVE_TAG === "全部" || tags.includes(ACTIVE_TAG);
+    return matchSeries && matchCategory && matchTag;
   });
 
   renderTagFilters();
-  renderPagination(list.length);
-  const pageList = ACTIVE_SERIES_ID ? list : list.slice((CURRENT_PAGE - 1) * PAGE_SIZE, CURRENT_PAGE * PAGE_SIZE);
+  const allowPagination = !ACTIVE_SERIES_ID || isGlobalSearch;
+  renderPagination(list.length, allowPagination);
+  const pageList = allowPagination
+    ? list.slice((CURRENT_PAGE - 1) * PAGE_SIZE, CURRENT_PAGE * PAGE_SIZE)
+    : list;
 
   if (list.length === 0) {
     grid.innerHTML = '<div class="cart-empty">找不到符合的商品，換個關鍵字試試看？</div>';
