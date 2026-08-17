@@ -935,3 +935,96 @@ header.topbar a.admin-link:hover {
   .pagination .page-numbers { width: auto; order: initial; flex: 0 0 auto; }
   .pagination .page-number { min-width: 34px; height: 34px; padding: 0 7px; font-size: 12px; }
 }
+
+
+/* ===== 817 最終修正：分頁固定可見 / DC圖示 / 分類+Tag真正同排 ===== */
+header.topbar .discord-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+header.topbar .discord-link .dc-icon {
+  font-size: 14px;
+  line-height: 1;
+  filter: saturate(.7);
+}
+
+/* 商品分類與標籤直接共用同一列，不再使用內層 flex 容器 */
+.card .meta-row {
+  display: flex !important;
+  align-items: center;
+  flex-wrap: nowrap !important;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: none;
+  margin-bottom: 4px;
+}
+.card .meta-row::-webkit-scrollbar { display: none; }
+.card .meta-row .cat,
+.card .meta-row .item-tag {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  line-height: 1.25;
+}
+.card .meta-row .cat {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(255,209,102,.10);
+  border: 1px solid rgba(255,209,102,.20);
+  color: var(--primary);
+  font-size: 10px;
+}
+.card .meta-row .item-tag {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(85,230,210,.10);
+  border: 1px solid rgba(85,230,210,.16);
+  color: var(--teal);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* 全部家具頁：上一頁｜1 2 3 4 5 6｜下一頁 永遠維持單列 */
+.pagination {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: nowrap !important;
+  gap: 7px;
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 4px 0 7px;
+}
+.pagination::-webkit-scrollbar { display: none; }
+.pagination .page-numbers {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  flex-wrap: nowrap !important;
+  gap: 5px;
+  width: auto !important;
+  order: initial !important;
+}
+.pagination .page-nav,
+.pagination .page-number {
+  flex: 0 0 auto !important;
+  white-space: nowrap;
+}
+@media(max-width:860px) {
+  .pagination { justify-content: flex-start; }
+  .pagination .page-nav { min-width: auto !important; padding: 9px 10px; }
+  .pagination .page-number { min-width: 32px; height: 34px; padding: 0 6px; }
+  .card .meta-row .cat,
+  .card .meta-row .item-tag { font-size: 9px; padding: 2px 5px; }
+  header.topbar .discord-link .dc-icon { font-size: 13px; }
+}

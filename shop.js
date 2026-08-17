@@ -42,7 +42,7 @@ let CATEGORY = "全部";
 let SEARCH_KEYWORD = "";
 let ACTIVE_TAG = "全部";
 let CURRENT_PAGE = 1;
-const PAGE_SIZE = 60;
+const PAGE_SIZE = 50;
 // 同一筆訂單只能用一種付款方式（糖果 或 現金），所以用全域變數記錄目前選的付款方式
 let PAYMENT_METHOD = localStorage.getItem("mstar_pay_method") || "糖果";
 // 家具要放在哪個角色身上（男角／女角）
@@ -325,7 +325,7 @@ function renderPagination(totalItems) {
 
   ["paginationTop","paginationBottom"].forEach(id => {
     const el=document.getElementById(id); if(!el) return;
-    if (ACTIVE_SERIES_ID || totalPages <= 1) { el.innerHTML=""; el.style.display="none"; return; }
+    if (ACTIVE_SERIES_ID) { el.innerHTML=""; el.style.display="none"; return; }
 
     const pageButtons = visiblePages().map(page =>
       `<button class="page-number ${page===CURRENT_PAGE?"active":""}" data-page="${page}" aria-label="第 ${page} 頁">${page}</button>`
@@ -381,8 +381,8 @@ function renderGrid() {
       <img src="${item.image}" alt="${item.name}" />
       <div class="body">
         <div class="meta-row">
-          <div class="cat">${item.category}</div>
-          ${Array.isArray(item.tags) && item.tags.length ? `<div class="item-tags">${item.tags.map(t=>`<span>${t}</span>`).join("")}</div>` : ""}
+          <span class="cat">${item.category}</span>
+          ${Array.isArray(item.tags) && item.tags.length ? item.tags.map(t=>`<span class="item-tag">${t}</span>`).join("") : ""}
         </div>
         <h3>${item.name}</h3>
         <div class="desc">${item.description || ""}</div>
