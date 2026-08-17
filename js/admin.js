@@ -283,7 +283,7 @@ function sortItemsByOrder(items) {
 }
 
 // 固定的分類清單（如果之後想增加/修改分類，跟我說一聲，我幫妳改）
-const CATEGORY_OPTIONS = ["可互動", "拍照區", "家具", "裝飾", "植物", "燈飾", "特殊", "熊", "花盆", "雕像"];
+const CATEGORY_OPTIONS = ["拍照區", "家具", "裝飾", "植物", "燈飾", "熊", "花盆", "雕像", "傳送門", "特殊"];
 
 // ALL_ITEMS 存整份、已經照排序排好的商品清單（不受搜尋框影響），
 // 搬移商品順序（▲▼）一律用這份完整清單的位置去計算，這樣即使搜尋框正在篩選畫面上只顯示部分商品，
@@ -392,6 +392,7 @@ function fillForm(item) {
   document.getElementById("fStock").value = item.stock;
   document.getElementById("fImage").value = item.image;
   document.getElementById("fDesc").value = item.description;
+  document.getElementById("fTags").value = Array.isArray(item.tags) ? item.tags.join(", ") : "";
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -399,7 +400,7 @@ function fillForm(item) {
 const IMAGE_URL_TEMPLATE = "https://drive.google.com/thumbnail?id=你的檔案ID&sz=w1000";
 
 function clearForm() {
-  ["itemId", "fName", "fPriceCandy", "fPriceCash", "fStock", "fDesc"].forEach(
+  ["itemId", "fName", "fPriceCandy", "fPriceCash", "fStock", "fDesc", "fTags"].forEach(
     (id) => (document.getElementById(id).value = "")
   );
   document.getElementById("fImage").value = IMAGE_URL_TEMPLATE;
@@ -418,6 +419,7 @@ async function saveItem() {
     seriesId: document.getElementById("fSeries").value || "",
     seriesName: ALL_SERIES.find((x) => x.id === document.getElementById("fSeries").value)?.name || "",
     category: document.getElementById("fCategory").value,
+    tags: document.getElementById("fTags").value.split(/[,，]/).map(x=>x.trim()).filter(Boolean),
     priceCandy,
     priceCash,
     stock: Number(document.getElementById("fStock").value) || 0,

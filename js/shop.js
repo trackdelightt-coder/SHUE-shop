@@ -40,6 +40,9 @@ let SERIES_ORDER = "newest";
 let ACTIVE_SERIES_ID = "";
 let CATEGORY = "全部";
 let SEARCH_KEYWORD = "";
+let ACTIVE_TAG = "全部";
+let CURRENT_PAGE = 1;
+const PAGE_SIZE = 60;
 // 同一筆訂單只能用一種付款方式（糖果 或 現金），所以用全域變數記錄目前選的付款方式
 let PAYMENT_METHOD = localStorage.getItem("mstar_pay_method") || "糖果";
 // 家具要放在哪個角色身上（男角／女角）
@@ -196,6 +199,7 @@ function openSeries(seriesId) {
     hero.style.display = "block";
     title.textContent = `🎁 ${series.name} 商品`;
     backBtn.style.display = "inline-block";
+    document.getElementById("seriesBottomBackBtn").style.display = "block";
     section.style.display = "none";
   }
   renderFilters();
@@ -210,6 +214,7 @@ function closeSeries() {
   document.getElementById("seriesHero").innerHTML = "";
   document.getElementById("productSectionTitle").textContent = "📦 全部家具";
   document.getElementById("backToAllBtn").style.display = "none";
+  document.getElementById("seriesBottomBackBtn").style.display = "none";
   document.getElementById("seriesSection").style.display = "block";
   renderFilters();
   renderGrid();
@@ -236,6 +241,7 @@ async function loadItems() {
       '<div class="cart-empty">商品讀取失敗，請確認 firebase-init.js 是否已經填好設定值。</div>';
   }
   renderFilters();
+  renderTagFilters();
   renderGrid();
   renderSeries();
   renderCart();
@@ -257,7 +263,7 @@ async function loadAnnouncement() {
   }
 }
 
-const CATEGORY_OPTIONS = ["可互動", "拍照區", "家具", "裝飾", "植物", "燈飾", "特殊", "熊", "花盆", "雕像"];
+const CATEGORY_OPTIONS = ["拍照區", "家具", "裝飾", "植物", "燈飾", "熊", "花盆", "雕像", "傳送門", "特殊"];
 
 function renderFilters() {
   const el = document.getElementById("filters");
@@ -266,9 +272,11 @@ function renderFilters() {
   // 系列頁商品通常不多：不再顯示分類按鈕。
   if (ACTIVE_SERIES_ID) {
     el.style.display = "none";
-    CATEGORY = "全部";
+    document.getElementById("tagFilters").style.display = "none";
+    CATEGORY = "全部"; ACTIVE_TAG = "全部"; CURRENT_PAGE = 1;
     return;
   }
+  document.getElementById("tagFilters").style.display = "flex";
 
   // 只有「全部家具」頁才顯示固定分類，順序照後台建檔規格。
   el.style.display = "flex";
@@ -278,10 +286,42 @@ function renderFilters() {
     if (c === CATEGORY) btn.classList.add("active");
     btn.onclick = () => {
       CATEGORY = c;
+      CURRENT_PAGE = 1;
       renderFilters();
       renderGrid();
     };
     el.appendChild(btn);
+  });
+}
+
+function renderTagFilters() {
+  const el = document.getElementById("tagFilters");
+  if (!el) return;
+  if (ACTIVE_SERIES_ID) { el.style.display = "none"; el.innerHTML = ""; return; }
+  const tags = [...new Set(ITEMS.flatMap(i => Array.isArray(i.tags) ? i.tags : []))].filter(Boolean).sort((a,b)=>a.localeCompare(b,"zh-Hant"));
+  el.innerHTML = "";
+  if (!tags.length) { el.style.display = "none"; return; }
+  el.style.display = "flex";
+  ["全部", ...tags].forEach(tag => {
+    const btn=document.createElement("button"); btn.textContent = tag === "全部" ? "🏷️ 全部標籤" : `🏷️ ${tag}`;
+    if (tag===ACTIVE_TAG) btn.classList.add("active");
+    btn.onclick=()=>{ ACTIVE_TAG=tag; CURRENT_PAGE=1; renderTagFilters(); renderGrid(); };
+    el.appendChild(btn);
+  });
+}
+
+function renderPagination(totalItems) {
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+  if (CURRENT_PAGE > totalPages) CURRENT_PAGE = totalPages;
+  ["paginationTop","paginationBottom"].forEach(id => {
+    const el=document.getElementById(id); if(!el) return;
+    if (ACTIVE_SERIES_ID || totalPages <= 1) { el.innerHTML=""; el.style.display="none"; return; }
+    el.style.display="flex"; el.innerHTML = `
+      <button class="page-nav prev" ${CURRENT_PAGE===1?"disabled":""}>← 上一頁</button>
+      <span>第 ${CURRENT_PAGE} / ${totalPages} 頁 · 共 ${totalItems} 件</span>
+      <button class="page-nav next" ${CURRENT_PAGE===totalPages?"disabled":""}>下一頁 →</button>`;
+    el.querySelector(".prev").onclick=()=>{ if(CURRENT_PAGE>1){CURRENT_PAGE--; renderGrid(); window.scrollTo({top:document.getElementById("productSectionTitle").offsetTop-20,behavior:"smooth"});} };
+    el.querySelector(".next").onclick=()=>{ if(CURRENT_PAGE<totalPages){CURRENT_PAGE++; renderGrid(); window.scrollTo({top:document.getElementById("productSectionTitle").offsetTop-20,behavior:"smooth"});} };
   });
 }
 
@@ -294,15 +334,20 @@ function renderGrid() {
     const matchSeries = !ACTIVE_SERIES_ID || i.seriesId === ACTIVE_SERIES_ID || (activeSeries && !i.seriesId && i.seriesName === activeSeries.name);
     const matchCategory = CATEGORY === "全部" || i.category === CATEGORY;
     const matchKeyword = !keyword || i.name.toLowerCase().includes(keyword);
-    return matchSeries && matchCategory && matchKeyword;
+    const matchTag = ACTIVE_TAG === "全部" || (Array.isArray(i.tags) && i.tags.includes(ACTIVE_TAG));
+    return matchSeries && matchCategory && matchKeyword && matchTag;
   });
+
+  renderTagFilters();
+  renderPagination(list.length);
+  const pageList = ACTIVE_SERIES_ID ? list : list.slice((CURRENT_PAGE - 1) * PAGE_SIZE, CURRENT_PAGE * PAGE_SIZE);
 
   if (list.length === 0) {
     grid.innerHTML = '<div class="cart-empty">找不到符合的商品，換個關鍵字試試看？</div>';
     return;
   }
 
-  list.forEach((item) => {
+  pageList.forEach((item) => {
     const card = document.createElement("div");
     card.className = "card";
     const outOfStock = item.stock !== undefined && item.stock <= 0;
@@ -311,6 +356,7 @@ function renderGrid() {
       <img src="${item.image}" alt="${item.name}" />
       <div class="body">
         <div class="cat">${item.category}</div>
+        ${Array.isArray(item.tags) && item.tags.length ? `<div class="item-tags">${item.tags.map(t=>`<span>${t}</span>`).join("")}</div>` : ""}
         <h3>${item.name}</h3>
         <div class="desc">${item.description || ""}</div>
         <div class="price-row">
@@ -616,6 +662,7 @@ updateGenderToggleUI();
 
 document.getElementById("searchBox").addEventListener("input", (e) => {
   SEARCH_KEYWORD = e.target.value;
+  CURRENT_PAGE = 1;
   renderGrid();
 });
 
@@ -623,5 +670,7 @@ document.getElementById("checkoutBtn").addEventListener("click", checkout);
 document.getElementById("seriesNewestBtn")?.addEventListener("click", () => setSeriesOrder("newest"));
 document.getElementById("seriesOldestBtn")?.addEventListener("click", () => setSeriesOrder("oldest"));
 document.getElementById("backToAllBtn")?.addEventListener("click", closeSeries);
+document.getElementById("seriesBottomBackBtn")?.addEventListener("click", closeSeries);
+document.getElementById("backToTopBtn")?.addEventListener("click", () => window.scrollTo({top:0,behavior:"smooth"}));
 Promise.all([loadItems(), loadSeries()]);
 loadAnnouncement();

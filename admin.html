@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>MSTAR 家具商店 - 後台管理</title>
+<title>蘇蘇家具商店 - 後台管理</title>
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <header class="topbar">
     <div>
-      <h1>⚙️ MSTAR 家具商店 後台管理</h1>
+      <h1>⚙️ 蘇蘇家具商店 後台管理</h1>
       <div class="sub">商品編輯 · 訂單查看</div>
     </div>
     <a class="admin-link" href="index.html">← 回買家頁面</a>
@@ -42,17 +42,21 @@
         <div>
           <label>分類</label>
           <select id="fCategory">
-            <option value="可互動">可互動</option>
             <option value="拍照區">拍照區</option>
             <option value="家具">家具</option>
             <option value="裝飾">裝飾</option>
             <option value="植物">植物</option>
             <option value="燈飾">燈飾</option>
-            <option value="特殊">特殊</option>
             <option value="熊">熊</option>
             <option value="花盆">花盆</option>
             <option value="雕像">雕像</option>
+            <option value="傳送門">傳送門</option>
+            <option value="特殊">特殊</option>
           </select>
+        </div>
+        <div>
+          <label>標籤 Tag（可自行增加，多個用逗號分隔）</label>
+          <input id="fTags" placeholder="例：可互動, 可坐, 發光" />
         </div>
         <div>
           <label>所屬幸運盒系列</label>

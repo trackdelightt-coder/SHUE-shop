@@ -3,17 +3,19 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>MSTAR 家具商店</title>
+<title>蘇蘇家具商店</title>
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <header class="topbar">
     <div>
-      <h1>🛋️ MSTAR 家具商店</h1>
+      <h1>🛋️ 蘇蘇家具商店</h1>
       <div class="sub">遊戲家具線上訂購 · 下單後金額自動計算</div>
     </div>
     <div class="topbar-links">
-      <a href="https://discord.com/users/856108684803309568" target="_blank" rel="noopener" class="discord-link">💬 私訊 Discord</a>
+      <a href="discord://-/users/856108684803309568" class="discord-link">🖥️ Discord 桌面版</a>
+      <a href="https://discord.com/users/856108684803309568" target="_blank" rel="noopener" class="discord-link discord-web-link">🌐 Discord 網頁版</a>
+      <a href="admin.html" class="admin-link">⚙️ 管理員</a>
     </div>
   </header>
 
@@ -42,7 +44,11 @@
       </div>
       <input id="searchBox" class="search-box" type="text" placeholder="🔍 搜尋商品名稱..." />
       <div class="filters" id="filters"></div>
+      <div class="tag-filters" id="tagFilters"></div>
+      <div class="pagination" id="paginationTop"></div>
       <div class="grid" id="grid"></div>
+      <div class="pagination" id="paginationBottom"></div>
+      <button type="button" id="seriesBottomBackBtn" class="big-back-btn" style="display:none;">← 返回幸運盒列表</button>
     </div>
 
     <aside class="cart-panel">
@@ -92,9 +98,10 @@
     </div>
   </div>
 
-  <footer class="site-footer"><a href="admin.html" class="admin-link-subtle">管理員</a></footer>
+  <footer class="site-footer">蘇蘇家具商店</footer>
 
   <script src="js/vendor/html2canvas.min.js"></script>
   <script type="module" src="js/shop.js"></script>
+  <button type="button" id="backToTopBtn" class="back-to-top" aria-label="回到頂端">↑</button>
 </body>
 </html>

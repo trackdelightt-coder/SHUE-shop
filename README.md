@@ -1,4 +1,4 @@
-# MSTAR 家具商店
+# 蘇蘇家具商店
 
 給玩家瀏覽、下單 MSTAR 遊戲家具的網站。這個版本**只需要 GitHub + Google 帳號**就能上線，不用另外註冊 Render／Zeabur 這類架站平台。包含：
 
