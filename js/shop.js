@@ -52,6 +52,12 @@ let PAYMENT_METHOD = localStorage.getItem("mstar_pay_method") || "糖果";
 let CHARACTER_GENDER = localStorage.getItem("mstar_gender") || "男角";
 // CART 是簡單的 { 商品ID: 數量 }
 let CART = JSON.parse(localStorage.getItem("mstar_cart") || "{}");
+// GIFT_CART 存的是從「贈品專區」加進來的商品，格式跟 CART 一樣，但結帳時免費、不算進總金額
+let GIFT_CART = JSON.parse(localStorage.getItem("mstar_gift_cart") || "{}");
+
+function saveGiftCart() {
+  localStorage.setItem("mstar_gift_cart", JSON.stringify(GIFT_CART));
+}
 
 function saveCart() {
   localStorage.setItem("mstar_cart", JSON.stringify(CART));
@@ -416,8 +422,10 @@ function renderGrid() {
   pageList.forEach((item) => grid.appendChild(buildProductCard(item)));
 }
 
-// 商品卡片（全部家具的格子、贈品專區都共用這份，行為完全一樣：可以看價格、加入購物車）
-function buildProductCard(item, extraClass) {
+// 商品卡片（全部家具的格子、贈品專區都共用這份）。
+// isGift 為 true 時（贈品專區）：卡片上顯示「🎁 贈品」而不是價格，按鈕是「加入贈品」，
+// 加進去的東西會放進 GIFT_CART（跟平常購買的 CART 分開），結帳時這筆不算錢。
+function buildProductCard(item, { extraClass, isGift } = {}) {
   const card = document.createElement("div");
   card.className = extraClass ? `card ${extraClass}` : "card";
   const outOfStock = isOutOfStock(item);
@@ -434,10 +442,10 @@ function buildProductCard(item, extraClass) {
       <h3>${item.name}</h3>
       <div class="desc">${item.description || ""}</div>
       <div class="price-row">
-        <span class="price">${formatPrice(PAYMENT_METHOD, priceFor(item, PAYMENT_METHOD))}</span>
+        <span class="price${isGift ? " gift-price" : ""}">${isGift ? "🎁 贈品（免費）" : formatPrice(PAYMENT_METHOD, priceFor(item, PAYMENT_METHOD))}</span>
         <span class="stock">${outOfStock ? "已售完" : "庫存 " + item.stock}</span>
       </div>
-      <button class="add-btn" ${outOfStock ? "disabled" : ""}>加入購物車</button>
+      <button class="add-btn" ${outOfStock ? "disabled" : ""}>${isGift ? "加入贈品" : "加入購物車"}</button>
     </div>
   `;
 
@@ -447,13 +455,13 @@ function buildProductCard(item, extraClass) {
     imgEl.src = PLACEHOLDER_IMG;
   };
 
-  card.querySelector(".add-btn").onclick = () => addToCart(item.id);
+  card.querySelector(".add-btn").onclick = () => (isGift ? addGiftToCart(item.id) : addToCart(item.id));
   return card;
 }
 
 // ---------- 贈品專區 ----------
 // 後台可以隨時開關；有開、而且至少有一件商品被標記「可作為贈品」時才會顯示。
-// 贈品區的商品卡片跟「全部家具」是同一套：可以看價格、直接加入購物車（因為商品本來就可能同時在賣）。
+// 贈品區的商品卡片可以直接加，但加進去的是免費贈品，不是正常購買。
 let GIFT_SECTION_ENABLED = false;
 
 function renderGiftSection() {
@@ -476,7 +484,9 @@ function renderGiftSection() {
   section.style.display = "block";
   grid.innerHTML = "";
   // 首頁只先預覽大約兩排，其餘要按「查看更多」才會在下面完整商品清單顯示。
-  giftItems.slice(0, GIFT_PREVIEW_COUNT).forEach((item) => grid.appendChild(buildProductCard(item, "gift-card")));
+  giftItems
+    .slice(0, GIFT_PREVIEW_COUNT)
+    .forEach((item) => grid.appendChild(buildProductCard(item, { extraClass: "gift-card", isGift: true })));
   if (moreBtn) moreBtn.style.display = giftItems.length > GIFT_PREVIEW_COUNT ? "block" : "none";
 }
 
@@ -491,6 +501,20 @@ function changeQty(id, delta) {
   CART[id] += delta;
   if (CART[id] <= 0) delete CART[id];
   saveCart();
+  renderCart();
+}
+
+function addGiftToCart(id) {
+  GIFT_CART[id] = (GIFT_CART[id] || 0) + 1;
+  saveGiftCart();
+  renderCart();
+}
+
+function changeGiftQty(id, delta) {
+  if (!GIFT_CART[id]) return;
+  GIFT_CART[id] += delta;
+  if (GIFT_CART[id] <= 0) delete GIFT_CART[id];
+  saveGiftCart();
   renderCart();
 }
 
@@ -536,7 +560,9 @@ function updateGenderToggleUI() {
 function renderCart() {
   const linesEl = document.getElementById("cartLines");
   const ids = Object.keys(CART);
-  if (ids.length === 0) {
+  const giftIds = Object.keys(GIFT_CART);
+
+  if (ids.length === 0 && giftIds.length === 0) {
     linesEl.innerHTML = '<div class="cart-empty">購物車是空的，快去挑選家具吧！</div>';
     document.getElementById("totalAmount").innerHTML = "0";
     document.getElementById("checkoutBtn").disabled = true;
@@ -571,6 +597,29 @@ function renderCart() {
     linesEl.appendChild(row);
   });
 
+  // 贈品是免費的，不會加進 total，畫面上也用「贈品」字樣跟「免費」跟一般購買的商品分開顯示
+  giftIds.forEach((id) => {
+    const item = ITEMS.find((i) => i.id === id);
+    if (!item) return;
+
+    const qty = GIFT_CART[id];
+    const row = document.createElement("div");
+    row.className = "cart-line cart-line-gift";
+    row.innerHTML = `
+      <span class="name">🎁 ${item.name}<span class="gift-tag">贈品</span></span>
+      <div class="qty-ctrl">
+        <button data-d="-1">−</button>
+        <span>${qty}</span>
+        <button data-d="1">＋</button>
+      </div>
+      <span class="gift-free">免費</span>
+    `;
+    row.querySelectorAll("button").forEach((btn) => {
+      btn.onclick = () => changeGiftQty(id, parseInt(btn.dataset.d, 10));
+    });
+    linesEl.appendChild(row);
+  });
+
   document.getElementById("totalAmount").textContent = formatPrice(PAYMENT_METHOD, total);
   document.getElementById("checkoutBtn").disabled = false;
 }
@@ -592,33 +641,48 @@ async function checkout() {
     return;
   }
 
-  const cartEntries = Object.entries(CART); // [ [id, qty], ... ]
-  if (cartEntries.length === 0) return;
+  const cartEntries = Object.entries(CART); // 正常購買 [ [id, qty], ... ]
+  const giftEntries = Object.entries(GIFT_CART); // 免費贈品 [ [id, qty], ... ]
+  if (cartEntries.length === 0 && giftEntries.length === 0) return;
+  if (cartEntries.length === 0 && giftEntries.length > 0) {
+    msgBox.innerHTML = '<div class="msg error">贈品要搭配購買商品才能兌換，請先加入至少一件商品</div>';
+    return;
+  }
 
   document.getElementById("checkoutBtn").disabled = true;
   document.getElementById("checkoutBtn").textContent = "送出中...";
 
   try {
     const result = await runTransaction(db, async (tx) => {
-      const itemRefs = cartEntries.map(([id]) => doc(db, "items", id));
-      const itemSnaps = await Promise.all(itemRefs.map((ref) => tx.get(ref)));
+      const allEntries = [
+        ...cartEntries.map(([id, qty]) => ({ id, qty, isGift: false })),
+        ...giftEntries.map(([id, qty]) => ({ id, qty, isGift: true })),
+      ];
+
+      // 同一件商品有可能同時被正常購買、又被選成贈品：庫存要合併算一次，不能分開各扣各的。
+      const uniqueIds = [...new Set(allEntries.map((e) => e.id))];
+      const uniqueSnaps = await Promise.all(uniqueIds.map((id) => tx.get(doc(db, "items", id))));
+      const snapById = {};
+      uniqueIds.forEach((id, i) => { snapById[id] = uniqueSnaps[i]; });
 
       const orderItems = [];
+      const combinedQtyById = {};
       let total = 0;
 
-      itemSnaps.forEach((snap, idx) => {
-        const [, qty] = cartEntries[idx];
+      allEntries.forEach((entry) => {
+        const snap = snapById[entry.id];
         if (!snap.exists() || snap.data().active === false) {
           throw new Error(`商品不存在或已下架`);
         }
         const item = snap.data();
-        if (item.stock !== undefined && qty > item.stock) {
+        combinedQtyById[entry.id] = (combinedQtyById[entry.id] || 0) + entry.qty;
+        if (item.stock !== undefined && combinedQtyById[entry.id] > item.stock) {
           throw new Error(`「${item.name}」庫存不足`);
         }
-        const unitPrice = PAYMENT_METHOD === "糖果" ? item.priceCandy : item.priceCash;
-        const lineTotal = unitPrice * qty;
+        const unitPrice = entry.isGift ? 0 : PAYMENT_METHOD === "糖果" ? item.priceCandy : item.priceCash;
+        const lineTotal = unitPrice * entry.qty;
         total += lineTotal;
-        orderItems.push({ id: snap.id, name: item.name, price: unitPrice, qty, image: item.image });
+        orderItems.push({ id: entry.id, name: item.name, price: unitPrice, qty: entry.qty, image: item.image, isGift: entry.isGift });
       });
 
       const orderRef = doc(collection(db, "orders"));
@@ -634,17 +698,19 @@ async function checkout() {
         status: "待確認",
       });
 
-      itemSnaps.forEach((snap, idx) => {
-        const [, qty] = cartEntries[idx];
-        const newStock = Math.max(0, (snap.data().stock || 0) - qty);
-        tx.update(itemRefs[idx], { stock: newStock });
+      uniqueIds.forEach((id) => {
+        const snap = snapById[id];
+        const newStock = Math.max(0, (snap.data().stock || 0) - (combinedQtyById[id] || 0));
+        tx.update(doc(db, "items", id), { stock: newStock });
       });
 
       return { id: orderRef.id, total, paymentMethod: PAYMENT_METHOD, items: orderItems };
     });
 
     CART = {};
+    GIFT_CART = {};
     saveCart();
+    saveGiftCart();
     renderCart();
     await loadItems();
     msgBox.innerHTML = "";
@@ -663,12 +729,12 @@ function showOrderSummary({ id, total, paymentMethod, items, buyerName, contact,
   const totalText = formatPrice(paymentMethod, total);
   const itemsHtml = items
     .map((i) => {
-      const lineText = paymentMethod === "糖果" ? `${i.price * i.qty} 糖果` : `NT$ ${i.price * i.qty}`;
+      const lineText = i.isGift ? "🎁 贈品" : paymentMethod === "糖果" ? `${i.price * i.qty} 糖果` : `NT$ ${i.price * i.qty}`;
       const thumbSrc = i.image ? corsProxyImage(i.image) : PLACEHOLDER_IMG;
       return `
-        <div class="order-summary-item">
+        <div class="order-summary-item${i.isGift ? " order-summary-item-gift" : ""}">
           <img src="${thumbSrc}" data-original="${i.image || ""}" alt="${i.name}" class="order-summary-thumb" />
-          <span class="order-summary-item-name">${i.name} x${i.qty}</span>
+          <span class="order-summary-item-name">${i.name} x${i.qty}${i.isGift ? '<span class="gift-tag">贈品</span>' : ""}</span>
           <span class="order-summary-item-price">${lineText}</span>
         </div>`;
     })
