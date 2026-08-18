@@ -38,6 +38,9 @@ let ITEMS = [];
 let SERIES = [];
 let SERIES_ORDER = "newest";
 let ACTIVE_SERIES_ID = "";
+// 首頁贈品專區只先預覽幾件（大約兩排），其餘要按「查看更多」才會在下面商品清單完整顯示
+const GIFT_PREVIEW_COUNT = 8;
+let ACTIVE_GIFT_VIEW = false;
 let CATEGORY = "全部";
 let SEARCH_KEYWORD = "";
 let ACTIVE_TAG = "全部";
@@ -187,6 +190,7 @@ function renderSeries() {
 
 function openSeries(seriesId) {
   ACTIVE_SERIES_ID = seriesId;
+  ACTIVE_GIFT_VIEW = false;
   CATEGORY = "全部";
   SEARCH_KEYWORD = "";
   document.getElementById("searchBox").value = "";
@@ -195,6 +199,7 @@ function openSeries(seriesId) {
   const title = document.getElementById("productSectionTitle");
   const backBtn = document.getElementById("backToAllBtn");
   const section = document.getElementById("seriesSection");
+  const giftSection = document.getElementById("giftSection");
   if (series) {
     hero.innerHTML = `
       <img src="${seriesCover(series)}" alt="${series.name}" />
@@ -208,16 +213,21 @@ function openSeries(seriesId) {
     hero.style.display = "block";
     title.textContent = `🎁 ${series.name} 商品`;
     backBtn.style.display = "inline-block";
-    document.getElementById("seriesBottomBackBtn").style.display = "block";
+    const bottomBack = document.getElementById("seriesBottomBackBtn");
+    bottomBack.textContent = "← 返回幸運盒列表";
+    bottomBack.style.display = "block";
     section.style.display = "none";
+    if (giftSection) giftSection.style.display = "none";
   }
   renderFilters();
   renderGrid();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function closeSeries() {
+// 從「幸運盒系列」或「贈品專區看更多」進到的專屬瀏覽畫面，都是按同一個返回鍵回到首頁正常瀏覽狀態。
+function closeSpecialView() {
   ACTIVE_SERIES_ID = "";
+  ACTIVE_GIFT_VIEW = false;
   CATEGORY = "全部";
   document.getElementById("seriesHero").style.display = "none";
   document.getElementById("seriesHero").innerHTML = "";
@@ -227,6 +237,28 @@ function closeSeries() {
   document.getElementById("seriesSection").style.display = "block";
   renderFilters();
   renderGrid();
+  renderGiftSection();
+}
+
+// 贈品專區按「查看更多」：把下面商品清單切成只顯示贈品商品，並顯示返回鍵。
+function openGiftView() {
+  ACTIVE_GIFT_VIEW = true;
+  ACTIVE_SERIES_ID = "";
+  CATEGORY = "全部";
+  SEARCH_KEYWORD = "";
+  document.getElementById("searchBox").value = "";
+  document.getElementById("seriesHero").style.display = "none";
+  document.getElementById("seriesHero").innerHTML = "";
+  document.getElementById("productSectionTitle").textContent = "🎁 贈品專區";
+  document.getElementById("backToAllBtn").style.display = "inline-block";
+  const bottomBack = document.getElementById("seriesBottomBackBtn");
+  bottomBack.textContent = "← 返回贈品專區預覽";
+  bottomBack.style.display = "block";
+  document.getElementById("seriesSection").style.display = "none";
+  document.getElementById("giftSection").style.display = "none";
+  renderFilters();
+  renderGrid();
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function setSeriesOrder(order) {
@@ -297,8 +329,8 @@ function renderFilters() {
   const el = document.getElementById("filters");
   el.innerHTML = "";
 
-  // 系列頁商品通常不多：不再顯示分類按鈕。
-  if (ACTIVE_SERIES_ID) {
+  // 系列頁、贈品專區「查看更多」頁商品通常不多：不再顯示分類按鈕。
+  if (ACTIVE_SERIES_ID || ACTIVE_GIFT_VIEW) {
     el.style.display = "none";
     document.getElementById("tagFilters").style.display = "none";
     CATEGORY = "全部"; ACTIVE_TAG = "全部"; CURRENT_PAGE = 1;
@@ -365,10 +397,11 @@ function renderGrid() {
   const activeSeries = SERIES.find((x) => x.id === ACTIVE_SERIES_ID);
   const list = ITEMS.filter((i) => {
     const matchSeries = !ACTIVE_SERIES_ID || i.seriesId === ACTIVE_SERIES_ID || (activeSeries && !i.seriesId && i.seriesName === activeSeries.name);
+    const matchGift = !ACTIVE_GIFT_VIEW || i.giftEligible === true;
     const matchCategory = CATEGORY === "全部" || i.category === CATEGORY;
     const matchKeyword = !keyword || i.name.toLowerCase().includes(keyword);
     const matchTag = ACTIVE_TAG === "全部" || (Array.isArray(i.tags) && i.tags.includes(ACTIVE_TAG));
-    return matchSeries && matchCategory && matchKeyword && matchTag;
+    return matchSeries && matchGift && matchCategory && matchKeyword && matchTag;
   });
 
   renderTagFilters();
@@ -380,79 +413,71 @@ function renderGrid() {
     return;
   }
 
-  pageList.forEach((item) => {
-    const card = document.createElement("div");
-    card.className = "card";
-    const outOfStock = isOutOfStock(item);
+  pageList.forEach((item) => grid.appendChild(buildProductCard(item)));
+}
 
-    card.innerHTML = `
-      <div class="card-img-wrap">
-        <img src="${item.image}" alt="${item.name}" class="${outOfStock ? "img-soldout" : ""}" />
-        ${item.isNew ? '<div class="ribbon-new">NEW</div>' : ""}
-        ${outOfStock ? '<div class="stamp-soldout">已售完</div>' : ""}
+// 商品卡片（全部家具的格子、贈品專區都共用這份，行為完全一樣：可以看價格、加入購物車）
+function buildProductCard(item, extraClass) {
+  const card = document.createElement("div");
+  card.className = extraClass ? `card ${extraClass}` : "card";
+  const outOfStock = isOutOfStock(item);
+
+  card.innerHTML = `
+    <div class="card-img-wrap">
+      <img src="${item.image}" alt="${item.name}" class="${outOfStock ? "img-soldout" : ""}" />
+      ${item.isNew ? '<div class="ribbon-new">NEW</div>' : ""}
+      ${outOfStock ? '<div class="stamp-soldout">已售完</div>' : ""}
+    </div>
+    <div class="body">
+      <div class="cat">${item.category}</div>
+      ${Array.isArray(item.tags) && item.tags.length ? `<div class="item-tags">${item.tags.map(t=>`<span>${t}</span>`).join("")}</div>` : ""}
+      <h3>${item.name}</h3>
+      <div class="desc">${item.description || ""}</div>
+      <div class="price-row">
+        <span class="price">${formatPrice(PAYMENT_METHOD, priceFor(item, PAYMENT_METHOD))}</span>
+        <span class="stock">${outOfStock ? "已售完" : "庫存 " + item.stock}</span>
       </div>
-      <div class="body">
-        <div class="cat">${item.category}</div>
-        ${Array.isArray(item.tags) && item.tags.length ? `<div class="item-tags">${item.tags.map(t=>`<span>${t}</span>`).join("")}</div>` : ""}
-        <h3>${item.name}</h3>
-        <div class="desc">${item.description || ""}</div>
-        <div class="price-row">
-          <span class="price">${formatPrice(PAYMENT_METHOD, priceFor(item, PAYMENT_METHOD))}</span>
-          <span class="stock">${outOfStock ? "已售完" : "庫存 " + item.stock}</span>
-        </div>
-        <button class="add-btn" ${outOfStock ? "disabled" : ""}>加入購物車</button>
-      </div>
-    `;
+      <button class="add-btn" ${outOfStock ? "disabled" : ""}>加入購物車</button>
+    </div>
+  `;
 
-    const imgEl = card.querySelector("img");
-    imgEl.onerror = () => {
-      imgEl.onerror = null;
-      imgEl.src = PLACEHOLDER_IMG;
-    };
+  const imgEl = card.querySelector("img");
+  imgEl.onerror = () => {
+    imgEl.onerror = null;
+    imgEl.src = PLACEHOLDER_IMG;
+  };
 
-    card.querySelector(".add-btn").onclick = () => addToCart(item.id);
-    grid.appendChild(card);
-  });
+  card.querySelector(".add-btn").onclick = () => addToCart(item.id);
+  return card;
 }
 
 // ---------- 贈品專區 ----------
 // 後台可以隨時開關；有開、而且至少有一件商品被標記「可作為贈品」時才會顯示。
+// 贈品區的商品卡片跟「全部家具」是同一套：可以看價格、直接加入購物車（因為商品本來就可能同時在賣）。
 let GIFT_SECTION_ENABLED = false;
 
 function renderGiftSection() {
   const section = document.getElementById("giftSection");
   const grid = document.getElementById("giftGrid");
+  const moreBtn = document.getElementById("giftMoreBtn");
   if (!section || !grid) return;
+
+  // 正在看系列頁或贈品「查看更多」全部列表時，首頁預覽區塊本來就故意被藏起來，這裡不要蓋回去。
+  if (ACTIVE_SERIES_ID || ACTIVE_GIFT_VIEW) return;
 
   const giftItems = ITEMS.filter((i) => i.giftEligible === true);
   if (!GIFT_SECTION_ENABLED || giftItems.length === 0) {
     section.style.display = "none";
     grid.innerHTML = "";
+    if (moreBtn) moreBtn.style.display = "none";
     return;
   }
 
   section.style.display = "block";
   grid.innerHTML = "";
-  giftItems.forEach((item) => {
-    const card = document.createElement("div");
-    card.className = "card gift-card";
-    card.innerHTML = `
-      <div class="card-img-wrap">
-        <img src="${item.image}" alt="${item.name}" />
-        ${item.isNew ? '<div class="ribbon-new">NEW</div>' : ""}
-      </div>
-      <div class="body">
-        <div class="cat">${item.category || ""}</div>
-        <h3>${item.name}</h3>
-      </div>
-    `;
-    const imgEl = card.querySelector("img");
-    imgEl.onerror = () => {
-      imgEl.onerror = null;
-      imgEl.src = PLACEHOLDER_IMG;
-    };
-    grid.appendChild(card);
-  });
+  // 首頁只先預覽大約兩排，其餘要按「查看更多」才會在下面完整商品清單顯示。
+  giftItems.slice(0, GIFT_PREVIEW_COUNT).forEach((item) => grid.appendChild(buildProductCard(item, "gift-card")));
+  if (moreBtn) moreBtn.style.display = giftItems.length > GIFT_PREVIEW_COUNT ? "block" : "none";
 }
 
 function addToCart(id) {
@@ -746,8 +771,9 @@ document.getElementById("searchBox").addEventListener("input", (e) => {
 document.getElementById("checkoutBtn").addEventListener("click", checkout);
 document.getElementById("seriesNewestBtn")?.addEventListener("click", () => setSeriesOrder("newest"));
 document.getElementById("seriesOldestBtn")?.addEventListener("click", () => setSeriesOrder("oldest"));
-document.getElementById("backToAllBtn")?.addEventListener("click", closeSeries);
-document.getElementById("seriesBottomBackBtn")?.addEventListener("click", closeSeries);
+document.getElementById("backToAllBtn")?.addEventListener("click", closeSpecialView);
+document.getElementById("seriesBottomBackBtn")?.addEventListener("click", closeSpecialView);
+document.getElementById("giftMoreBtn")?.addEventListener("click", openGiftView);
 document.getElementById("backToTopBtn")?.addEventListener("click", () => window.scrollTo({top:0,behavior:"smooth"}));
 Promise.all([loadItems(), loadSeries()]);
 loadTaxonomy();

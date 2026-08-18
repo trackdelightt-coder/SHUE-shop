@@ -476,6 +476,10 @@ async function loadItems() {
   renderItemsTable();
 }
 
+// 商品管理列表的頁次（避免商品一多，整頁要一直往下滑）
+const ITEMS_PAGE_SIZE = 20;
+let ITEMS_CURRENT_PAGE = 1;
+
 function renderItemsTable() {
   const keyword = (document.getElementById("itemSearchBox").value || "").trim().toLowerCase();
   const category = document.getElementById("categoryFilter").value;
@@ -504,10 +508,21 @@ function renderItemsTable() {
 
   if (visibleItems.length === 0) {
     tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);">找不到符合的商品</td></tr>';
+    renderItemsPagination(0);
     return;
   }
 
-  visibleItems.forEach((item) => {
+  const totalPages = Math.max(1, Math.ceil(visibleItems.length / ITEMS_PAGE_SIZE));
+  if (ITEMS_CURRENT_PAGE > totalPages) ITEMS_CURRENT_PAGE = totalPages;
+  if (ITEMS_CURRENT_PAGE < 1) ITEMS_CURRENT_PAGE = 1;
+  const pageItems = visibleItems.slice(
+    (ITEMS_CURRENT_PAGE - 1) * ITEMS_PAGE_SIZE,
+    ITEMS_CURRENT_PAGE * ITEMS_PAGE_SIZE
+  );
+
+  renderItemsPagination(visibleItems.length);
+
+  pageItems.forEach((item) => {
     // 用「完整清單」裡的位置判斷是否已經到最上/最下面，跟搜尋篩選無關
     const idx = ALL_ITEMS.findIndex((i) => i.id === item.id);
     const isSoldOut = item.stock !== undefined && item.stock <= 0;
@@ -548,9 +563,35 @@ function renderItemsTable() {
   });
 }
 
-document.getElementById("itemSearchBox").addEventListener("input", renderItemsTable);
-document.getElementById("categoryFilter").addEventListener("change", renderItemsTable);
-document.getElementById("seriesFilterAdmin")?.addEventListener("change", renderItemsTable);
+function renderItemsPagination(totalItems) {
+  const el = document.getElementById("itemsPagination");
+  if (!el) return;
+  const totalPages = Math.max(1, Math.ceil(totalItems / ITEMS_PAGE_SIZE));
+  if (totalItems === 0 || totalPages <= 1) {
+    el.innerHTML = "";
+    return;
+  }
+  el.innerHTML = `
+    <button class="page-nav prev" ${ITEMS_CURRENT_PAGE === 1 ? "disabled" : ""}>← 上一頁</button>
+    <span>第 ${ITEMS_CURRENT_PAGE} / ${totalPages} 頁 · 共 ${totalItems} 件</span>
+    <button class="page-nav next" ${ITEMS_CURRENT_PAGE === totalPages ? "disabled" : ""}>下一頁 →</button>`;
+  el.querySelector(".prev").onclick = () => {
+    if (ITEMS_CURRENT_PAGE > 1) {
+      ITEMS_CURRENT_PAGE--;
+      renderItemsTable();
+    }
+  };
+  el.querySelector(".next").onclick = () => {
+    if (ITEMS_CURRENT_PAGE < totalPages) {
+      ITEMS_CURRENT_PAGE++;
+      renderItemsTable();
+    }
+  };
+}
+
+document.getElementById("itemSearchBox").addEventListener("input", () => { ITEMS_CURRENT_PAGE = 1; renderItemsTable(); });
+document.getElementById("categoryFilter").addEventListener("change", () => { ITEMS_CURRENT_PAGE = 1; renderItemsTable(); });
+document.getElementById("seriesFilterAdmin")?.addEventListener("change", () => { ITEMS_CURRENT_PAGE = 1; renderItemsTable(); });
 
 // 把完整清單（ALL_ITEMS）裡第 idx 筆和它上面（direction=-1）或下面（direction=1）
 // 那筆互換順序，然後把「目前這份排序」整批寫回資料庫（幫每筆商品補上 sortOrder）。
