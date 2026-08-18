@@ -381,6 +381,23 @@ img.img-soldout {
 
 .cart-line .name { flex: 1; }
 
+.cart-line-gift { background: rgba(255, 99, 130, 0.06); border-radius: 8px; padding-left: 8px; padding-right: 8px; }
+.cart-line-gift .name { color: #ff98a8; }
+.gift-tag {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 99, 130, 0.18);
+  color: #ff98a8;
+  vertical-align: middle;
+}
+.gift-free { color: #ff98a8; font-weight: 800; }
+.price.gift-price { color: #ff98a8; }
+.order-summary-item-gift .order-summary-item-price { color: #ff98a8; font-weight: 800; }
+
 .cart-line .qty-ctrl {
   display: flex;
   align-items: center;
