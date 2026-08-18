@@ -40,27 +40,23 @@
           <input id="fName" placeholder="例：北歐風雙人沙發" />
         </div>
         <div>
-          <label>分類</label>
-          <select id="fCategory">
-            <option value="拍照區">拍照區</option>
-            <option value="家具">家具</option>
-            <option value="裝飾">裝飾</option>
-            <option value="植物">植物</option>
-            <option value="燈飾">燈飾</option>
-            <option value="熊">熊</option>
-            <option value="花盆">花盆</option>
-            <option value="雕像">雕像</option>
-            <option value="傳送門">傳送門</option>
-            <option value="特殊">特殊</option>
-          </select>
+          <label>分類（如需新增/刪除分類選項，請到下方「分類與標籤管理」）</label>
+          <select id="fCategory"></select>
         </div>
-        <div>
-          <label>標籤 Tag（可自行增加，多個用逗號分隔）</label>
-          <input id="fTags" placeholder="例：可互動, 可坐, 發光" />
+        <div class="full">
+          <label>標籤 Tag（勾選；如需新增/刪除標籤選項，請到下方「分類與標籤管理」）</label>
+          <div id="fTagsPicker" class="tag-picker"></div>
         </div>
         <div>
           <label>所屬幸運盒系列</label>
           <select id="fSeries"><option value="">無系列／一般家具</option></select>
+        </div>
+        <div class="full">
+          <label>商品標記（已售完不用勾，庫存歸零時前台會自動顯示已售完）</label>
+          <div class="flag-row">
+            <label><input type="checkbox" id="fIsNew" /> 🆕 新品(New)</label>
+            <label><input type="checkbox" id="fGiftEligible" /> 🎁 可作為贈品</label>
+          </div>
         </div>
         <div>
           <label>🍬 糖果價</label>
@@ -89,20 +85,32 @@
         <button id="seedBtn" class="secondary-btn" type="button">📦 匯入 6 筆範例商品（僅第一次使用時按一次）</button>
       </div>
 
+      <div class="taxonomy-manage">
+        <div class="taxonomy-col">
+          <h3>🗂 分類管理</h3>
+          <div id="categoryChipList" class="chip-list"></div>
+          <div class="taxonomy-add-row">
+            <input id="newCategoryInput" placeholder="新增分類名稱" />
+            <button id="addCategoryBtn" class="secondary-btn" type="button">新增分類</button>
+          </div>
+        </div>
+        <div class="taxonomy-col">
+          <h3>🏷 標籤管理</h3>
+          <div id="tagChipList" class="chip-list"></div>
+          <div class="taxonomy-add-row">
+            <input id="newTagInput" placeholder="新增標籤名稱" />
+            <button id="addTagBtn" class="secondary-btn" type="button">新增標籤</button>
+          </div>
+        </div>
+      </div>
+
       <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
-        <input id="itemSearchBox" class="search-box" type="text" placeholder="🔍 搜尋商品名稱..." style="max-width:280px; margin-bottom:0;" />
+        <input id="itemSearchBox" class="search-box" type="text" placeholder="🔍 搜尋商品名稱／系列名稱..." style="max-width:280px; margin-bottom:0;" />
         <select id="categoryFilter" style="max-width:180px;">
           <option value="">全部家具</option>
-          <option value="可互動">可互動</option>
-          <option value="拍照區">拍照區</option>
-          <option value="家具">家具</option>
-          <option value="裝飾">裝飾</option>
-          <option value="植物">植物</option>
-          <option value="燈飾">燈飾</option>
-          <option value="特殊">特殊</option>
-          <option value="熊">熊</option>
-          <option value="花盆">花盆</option>
-          <option value="雕像">雕像</option>
+        </select>
+        <select id="seriesFilterAdmin" style="max-width:200px;">
+          <option value="">全部系列</option>
         </select>
       </div>
 
@@ -158,7 +166,10 @@
           <label>商店公告（會顯示在買家頁面最上方，例如營業時間、交易比例、注意事項）</label>
           <textarea id="fAnnouncement" rows="6" placeholder="例：&#10;📢 營業時間：每天 20:00-24:00&#10;💰 交易方式：可糖可T，比值1:1&#10;💬 有問題歡迎 Discord 聯繫我們"></textarea>
         </div>
-        <button id="saveSettingsBtn" class="primary-submit">儲存公告</button>
+        <div class="flag-row" style="padding-bottom:4px;">
+          <label><input type="checkbox" id="fGiftSectionEnabled" /> 🎁 開啟贈品專區（買家頁面會顯示「贈品專區」區塊，隨時可以關掉）</label>
+        </div>
+        <button id="saveSettingsBtn" class="primary-submit">儲存設定</button>
       </div>
     </div>
   </div>
