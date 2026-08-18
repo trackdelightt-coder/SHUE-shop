@@ -152,6 +152,13 @@ function seriesCover(series) {
   return firstItem?.image || PLACEHOLDER_IMG;
 }
 
+// 這個系列裡只要有一件商品被標記「新品」，系列首圖就會出現 NEW 斜緞帶
+function seriesHasNew(series) {
+  return ITEMS.some(
+    (item) => (item.seriesId === series.id || (!item.seriesId && item.seriesName === series.name)) && item.isNew
+  );
+}
+
 function renderSeries() {
   const grid = document.getElementById("seriesGrid");
   if (!grid) return;
@@ -166,6 +173,7 @@ function renderSeries() {
     card.className = "series-card";
     card.innerHTML = `
       <img src="${seriesCover(series)}" alt="${series.name}" />
+      ${seriesHasNew(series) ? '<div class="ribbon-new">NEW</div>' : ""}
       <div class="series-card-body">
         <div class="series-card-title">${series.name}</div>
         <div class="series-card-count">${seriesItemCount(series)} 件家具</div>
@@ -190,6 +198,7 @@ function openSeries(seriesId) {
   if (series) {
     hero.innerHTML = `
       <img src="${seriesCover(series)}" alt="${series.name}" />
+      ${seriesHasNew(series) ? '<div class="ribbon-new">NEW</div>' : ""}
       <div class="series-hero-body">
         <h2 class="series-hero-title">${series.name}</h2>
         ${series.description ? `<p class="series-hero-desc">${series.description}</p>` : ""}
@@ -245,25 +254,44 @@ async function loadItems() {
   renderGrid();
   renderSeries();
   renderCart();
+  renderGiftSection();
 }
 
 async function loadAnnouncement() {
   try {
     const snap = await getDoc(doc(db, "settings", "main"));
     const box = document.getElementById("announcementBox");
-    const announcement = snap.exists() ? snap.data().announcement : "";
+    const data = snap.exists() ? snap.data() : {};
+    const announcement = data.announcement;
     if (announcement && announcement.trim()) {
       box.textContent = announcement;
       box.style.display = "block";
     } else {
       box.style.display = "none";
     }
+    GIFT_SECTION_ENABLED = data.giftSectionEnabled === true;
+    renderGiftSection();
   } catch (err) {
-    // 公告載入失敗不影響下單流程，靜默略過
+    // 公告／贈品區設定載入失敗不影響下單流程，靜默略過
   }
 }
 
-const CATEGORY_OPTIONS = ["拍照區", "家具", "裝飾", "植物", "燈飾", "熊", "花盆", "雕像", "傳送門", "特殊"];
+// 分類清單改成在後台「分類與標籤管理」維護，存在 Firestore（settings/taxonomy）。
+// 這裡的清單只在後台還沒建立過設定值時，先暫時顯示用（避免商店還沒設定好分類就整頁空白）。
+const DEFAULT_CATEGORY_OPTIONS = ["拍照區", "家具", "裝飾", "植物", "燈飾", "熊", "花盆", "雕像", "傳送門", "特殊"];
+let CATEGORY_LIST = DEFAULT_CATEGORY_OPTIONS.slice();
+
+async function loadTaxonomy() {
+  try {
+    const snap = await getDoc(doc(db, "settings", "taxonomy"));
+    if (snap.exists() && Array.isArray(snap.data().categories) && snap.data().categories.length) {
+      CATEGORY_LIST = snap.data().categories;
+    }
+  } catch (err) {
+    // 讀取失敗就先用預設分類清單，不影響買家瀏覽
+  }
+  renderFilters();
+}
 
 function renderFilters() {
   const el = document.getElementById("filters");
@@ -278,9 +306,9 @@ function renderFilters() {
   }
   document.getElementById("tagFilters").style.display = "flex";
 
-  // 只有「全部家具」頁才顯示固定分類，順序照後台建檔規格。
+  // 只有「全部家具」頁才顯示分類，順序照後台「分類與標籤管理」目前的清單。
   el.style.display = "flex";
-  ["全部", ...CATEGORY_OPTIONS].forEach((c) => {
+  ["全部", ...CATEGORY_LIST].forEach((c) => {
     const btn = document.createElement("button");
     btn.textContent = c;
     if (c === CATEGORY) btn.classList.add("active");
@@ -325,6 +353,11 @@ function renderPagination(totalItems) {
   });
 }
 
+// 已售完是庫存歸零時自動判斷，不用後台手動標記。
+function isOutOfStock(item) {
+  return item.stock !== undefined && item.stock <= 0;
+}
+
 function renderGrid() {
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
@@ -350,10 +383,14 @@ function renderGrid() {
   pageList.forEach((item) => {
     const card = document.createElement("div");
     card.className = "card";
-    const outOfStock = item.stock !== undefined && item.stock <= 0;
+    const outOfStock = isOutOfStock(item);
 
     card.innerHTML = `
-      <img src="${item.image}" alt="${item.name}" />
+      <div class="card-img-wrap">
+        <img src="${item.image}" alt="${item.name}" class="${outOfStock ? "img-soldout" : ""}" />
+        ${item.isNew ? '<div class="ribbon-new">NEW</div>' : ""}
+        ${outOfStock ? '<div class="stamp-soldout">已售完</div>' : ""}
+      </div>
       <div class="body">
         <div class="cat">${item.category}</div>
         ${Array.isArray(item.tags) && item.tags.length ? `<div class="item-tags">${item.tags.map(t=>`<span>${t}</span>`).join("")}</div>` : ""}
@@ -374,6 +411,46 @@ function renderGrid() {
     };
 
     card.querySelector(".add-btn").onclick = () => addToCart(item.id);
+    grid.appendChild(card);
+  });
+}
+
+// ---------- 贈品專區 ----------
+// 後台可以隨時開關；有開、而且至少有一件商品被標記「可作為贈品」時才會顯示。
+let GIFT_SECTION_ENABLED = false;
+
+function renderGiftSection() {
+  const section = document.getElementById("giftSection");
+  const grid = document.getElementById("giftGrid");
+  if (!section || !grid) return;
+
+  const giftItems = ITEMS.filter((i) => i.giftEligible === true);
+  if (!GIFT_SECTION_ENABLED || giftItems.length === 0) {
+    section.style.display = "none";
+    grid.innerHTML = "";
+    return;
+  }
+
+  section.style.display = "block";
+  grid.innerHTML = "";
+  giftItems.forEach((item) => {
+    const card = document.createElement("div");
+    card.className = "card gift-card";
+    card.innerHTML = `
+      <div class="card-img-wrap">
+        <img src="${item.image}" alt="${item.name}" />
+        ${item.isNew ? '<div class="ribbon-new">NEW</div>' : ""}
+      </div>
+      <div class="body">
+        <div class="cat">${item.category || ""}</div>
+        <h3>${item.name}</h3>
+      </div>
+    `;
+    const imgEl = card.querySelector("img");
+    imgEl.onerror = () => {
+      imgEl.onerror = null;
+      imgEl.src = PLACEHOLDER_IMG;
+    };
     grid.appendChild(card);
   });
 }
@@ -673,4 +750,5 @@ document.getElementById("backToAllBtn")?.addEventListener("click", closeSeries);
 document.getElementById("seriesBottomBackBtn")?.addEventListener("click", closeSeries);
 document.getElementById("backToTopBtn")?.addEventListener("click", () => window.scrollTo({top:0,behavior:"smooth"}));
 Promise.all([loadItems(), loadSeries()]);
+loadTaxonomy();
 loadAnnouncement();

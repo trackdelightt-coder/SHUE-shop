@@ -62,6 +62,8 @@ async function showAdmin() {
   document.getElementById("loginView").style.display = "none";
   document.getElementById("adminView").style.display = "block";
   await Promise.all([loadItems(), loadSeries()]);
+  await loadTaxonomy();
+  refreshTaxonomyUI();
 }
 
 // ---------- Tabs ----------
@@ -142,6 +144,22 @@ async function loadSeries() {
   ALL_SERIES = sortSeries(items);
   renderSeriesAdmin();
   populateSeriesSelect();
+  populateSeriesFilterAdmin();
+}
+
+// 商品管理列表上方的「系列」篩選下拉選單（跟商品表單裡選系列是分開的兩個下拉選單）
+function populateSeriesFilterAdmin() {
+  const select = document.getElementById("seriesFilterAdmin");
+  if (!select) return;
+  const prevVal = select.value;
+  select.innerHTML = '<option value="">全部系列</option>';
+  ALL_SERIES.forEach((series) => {
+    const opt = document.createElement("option");
+    opt.value = series.id;
+    opt.textContent = series.name;
+    select.appendChild(opt);
+  });
+  select.value = prevVal || "";
 }
 
 async function persistSeries() {
@@ -268,6 +286,171 @@ async function seedDefaultSeries() {
   alert("預設幸運盒系列已建立。");
 }
 
+// 分類 / 標籤清單現在存在 Firestore（settings/taxonomy），妳可以直接在後台「分類與標籤管理」新增或刪除，
+// 不用再麻煩我改程式碼。這裡的清單只在資料庫裡還沒有任何設定時，第一次自動建立用（種子資料）。
+const DEFAULT_CATEGORY_OPTIONS = ["拍照區", "家具", "裝飾", "植物", "燈飾", "熊", "花盆", "雕像", "傳送門", "特殊"];
+
+// TAXONOMY 存目前的分類／標籤清單，畫面上所有下拉選單、勾選清單都是照這份資料畫出來的。
+let TAXONOMY = { categories: [], tags: [] };
+
+async function loadTaxonomy() {
+  const ref = doc(db, "settings", "taxonomy");
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    const data = snap.data();
+    TAXONOMY = {
+      categories: Array.isArray(data.categories) ? data.categories : [],
+      tags: Array.isArray(data.tags) ? data.tags : [],
+    };
+  } else {
+    // 第一次使用：分類先用原本固定的清單當預設值；標籤則掃描現有商品目前已經打過的標籤，
+    // 這樣舊商品原本用過的標籤才不會突然消失、要重打。
+    const existingTags = [...new Set(ALL_ITEMS.flatMap((i) => (Array.isArray(i.tags) ? i.tags : [])))]
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, "zh-Hant"));
+    TAXONOMY = { categories: DEFAULT_CATEGORY_OPTIONS.slice(), tags: existingTags };
+    await persistTaxonomy();
+  }
+}
+
+async function persistTaxonomy() {
+  await setDoc(doc(db, "settings", "taxonomy"), TAXONOMY);
+}
+
+function populateCategorySelects() {
+  const fCategory = document.getElementById("fCategory");
+  const categoryFilter = document.getElementById("categoryFilter");
+  const prevFVal = fCategory.value;
+  const prevFilterVal = categoryFilter.value;
+
+  fCategory.innerHTML = "";
+  TAXONOMY.categories.forEach((c) => {
+    const opt = document.createElement("option");
+    opt.value = c;
+    opt.textContent = c;
+    fCategory.appendChild(opt);
+  });
+  if (TAXONOMY.categories.includes(prevFVal)) fCategory.value = prevFVal;
+
+  categoryFilter.innerHTML = '<option value="">全部家具</option>';
+  TAXONOMY.categories.forEach((c) => {
+    const opt = document.createElement("option");
+    opt.value = c;
+    opt.textContent = c;
+    categoryFilter.appendChild(opt);
+  });
+  if (TAXONOMY.categories.includes(prevFilterVal)) categoryFilter.value = prevFilterVal;
+}
+
+function renderCategoryChips() {
+  const box = document.getElementById("categoryChipList");
+  if (!box) return;
+  box.innerHTML = "";
+  if (!TAXONOMY.categories.length) {
+    box.innerHTML = '<div style="color:var(--muted);font-size:12px;">還沒有分類，先在下面新增一個吧。</div>';
+    return;
+  }
+  TAXONOMY.categories.forEach((c) => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.innerHTML = `${c} <button type="button" title="刪除分類">×</button>`;
+    chip.querySelector("button").onclick = () => deleteCategory(c);
+    box.appendChild(chip);
+  });
+}
+
+function renderTagChips() {
+  const box = document.getElementById("tagChipList");
+  if (!box) return;
+  box.innerHTML = "";
+  if (!TAXONOMY.tags.length) {
+    box.innerHTML = '<div style="color:var(--muted);font-size:12px;">還沒有標籤，先在下面新增一個吧。</div>';
+    return;
+  }
+  TAXONOMY.tags.forEach((t) => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.innerHTML = `${t} <button type="button" title="刪除標籤">×</button>`;
+    chip.querySelector("button").onclick = () => deleteTag(t);
+    box.appendChild(chip);
+  });
+}
+
+// 商品表單裡的標籤勾選清單。selectedTags 是這個商品目前已經有的標籤，畫出來時會先幫忙勾好。
+function renderTagPicker(selectedTags) {
+  const box = document.getElementById("fTagsPicker");
+  if (!box) return;
+  box.innerHTML = "";
+  if (!TAXONOMY.tags.length) {
+    box.innerHTML = '<div class="tag-picker-empty">還沒有標籤可以選，先到下面「分類與標籤管理」新增標籤。</div>';
+    return;
+  }
+  const selected = new Set(selectedTags || []);
+  TAXONOMY.tags.forEach((t) => {
+    const label = document.createElement("label");
+    label.innerHTML = `<input type="checkbox" value="${t}" ${selected.has(t) ? "checked" : ""} /> ${t}`;
+    box.appendChild(label);
+  });
+}
+
+function getCheckedTags() {
+  return Array.from(document.querySelectorAll("#fTagsPicker input[type=checkbox]:checked")).map((cb) => cb.value);
+}
+
+async function addCategory() {
+  const input = document.getElementById("newCategoryInput");
+  const name = input.value.trim();
+  if (!name) return;
+  if (TAXONOMY.categories.includes(name)) {
+    alert("這個分類已經存在了。");
+    return;
+  }
+  TAXONOMY.categories.push(name);
+  await persistTaxonomy();
+  input.value = "";
+  refreshTaxonomyUI();
+}
+
+async function deleteCategory(name) {
+  if (!confirm(`確定要刪除分類「${name}」嗎？已經用這個分類的商品不會被刪除，只是之後改分類時會看到「舊分類」提示。`)) return;
+  TAXONOMY.categories = TAXONOMY.categories.filter((c) => c !== name);
+  await persistTaxonomy();
+  refreshTaxonomyUI();
+}
+
+async function addTag() {
+  const input = document.getElementById("newTagInput");
+  const name = input.value.trim();
+  if (!name) return;
+  if (TAXONOMY.tags.includes(name)) {
+    alert("這個標籤已經存在了。");
+    return;
+  }
+  TAXONOMY.tags.push(name);
+  await persistTaxonomy();
+  input.value = "";
+  refreshTaxonomyUI();
+}
+
+async function deleteTag(name) {
+  if (!confirm(`確定要刪除標籤「${name}」嗎？已經有這個標籤的商品不會自動移除標籤，只是之後這個標籤不會再出現在勾選清單裡。`)) return;
+  TAXONOMY.tags = TAXONOMY.tags.filter((t) => t !== name);
+  await persistTaxonomy();
+  refreshTaxonomyUI();
+}
+
+function refreshTaxonomyUI() {
+  populateCategorySelects();
+  renderCategoryChips();
+  renderTagChips();
+  const currentlyChecked = getCheckedTags();
+  renderTagPicker(currentlyChecked);
+  renderItemsTable();
+}
+
+document.getElementById("addCategoryBtn").onclick = (e) => { e.preventDefault(); addCategory(); };
+document.getElementById("addTagBtn").onclick = (e) => { e.preventDefault(); addTag(); };
+
 // ---------- Items ----------
 // 商品排序：每筆商品有一個 sortOrder 數字，數字小的排前面。
 // 還沒設定過排序的舊商品，暫時用讀取到的順序當預設值。
@@ -281,9 +464,6 @@ function sortItemsByOrder(items) {
     })
     .map((x) => x.item);
 }
-
-// 固定的分類清單（如果之後想增加/修改分類，跟我說一聲，我幫妳改）
-const CATEGORY_OPTIONS = ["拍照區", "家具", "裝飾", "植物", "燈飾", "熊", "花盆", "雕像", "傳送門", "特殊"];
 
 // ALL_ITEMS 存整份、已經照排序排好的商品清單（不受搜尋框影響），
 // 搬移商品順序（▲▼）一律用這份完整清單的位置去計算，這樣即使搜尋框正在篩選畫面上只顯示部分商品，
@@ -299,15 +479,24 @@ async function loadItems() {
 function renderItemsTable() {
   const keyword = (document.getElementById("itemSearchBox").value || "").trim().toLowerCase();
   const category = document.getElementById("categoryFilter").value;
+  const seriesFilter = document.getElementById("seriesFilterAdmin")?.value || "";
 
   let visibleItems = ALL_ITEMS;
   if (category) {
     visibleItems = visibleItems.filter((i) => i.category === category);
   }
+  if (seriesFilter) {
+    visibleItems = visibleItems.filter((i) => i.seriesId === seriesFilter);
+  }
   if (keyword) {
-    visibleItems = visibleItems.filter(
-      (i) => i.name.toLowerCase().includes(keyword) || (i.category || "").toLowerCase().includes(keyword)
-    );
+    visibleItems = visibleItems.filter((i) => {
+      const seriesName = (ALL_SERIES.find((x) => x.id === i.seriesId)?.name || i.seriesName || "").toLowerCase();
+      return (
+        i.name.toLowerCase().includes(keyword) ||
+        (i.category || "").toLowerCase().includes(keyword) ||
+        seriesName.includes(keyword)
+      );
+    });
   }
 
   const tbody = document.getElementById("itemsTbody");
@@ -321,10 +510,16 @@ function renderItemsTable() {
   visibleItems.forEach((item) => {
     // 用「完整清單」裡的位置判斷是否已經到最上/最下面，跟搜尋篩選無關
     const idx = ALL_ITEMS.findIndex((i) => i.id === item.id);
+    const isSoldOut = item.stock !== undefined && item.stock <= 0;
+    const badges = [
+      item.isNew ? '<span class="mini-badge new">NEW</span>' : "",
+      isSoldOut ? '<span class="mini-badge soldout">已售完</span>' : "",
+      item.giftEligible ? '<span class="mini-badge gift">🎁贈品</span>' : "",
+    ].join("");
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td><img src="${item.image}" style="width:60px;height:44px;object-fit:cover;border-radius:6px;" /></td>
-      <td>${item.name}</td>
+      <td>${item.name}${badges}</td>
       <td>${ALL_SERIES.find((x) => x.id === item.seriesId)?.name || item.seriesName || "—"}</td>
       <td>${item.category}</td>
       <td>🍬 ${item.priceCandy}</td>
@@ -355,6 +550,7 @@ function renderItemsTable() {
 
 document.getElementById("itemSearchBox").addEventListener("input", renderItemsTable);
 document.getElementById("categoryFilter").addEventListener("change", renderItemsTable);
+document.getElementById("seriesFilterAdmin")?.addEventListener("change", renderItemsTable);
 
 // 把完整清單（ALL_ITEMS）裡第 idx 筆和它上面（direction=-1）或下面（direction=1）
 // 那筆互換順序，然後把「目前這份排序」整批寫回資料庫（幫每筆商品補上 sortOrder）。
@@ -376,8 +572,8 @@ function fillForm(item) {
 
   const categorySelect = document.getElementById("fCategory");
   categorySelect.querySelectorAll("option[data-legacy]").forEach((o) => o.remove());
-  if (item.category && !CATEGORY_OPTIONS.includes(item.category)) {
-    // 舊商品用的是以前的自訂分類文字，不在新的固定清單裡，
+  if (item.category && !TAXONOMY.categories.includes(item.category)) {
+    // 舊商品用的是以前刪掉／改過的分類文字，不在目前的分類清單裡，
     // 先暫時加一個選項顯示原本的值，避免存檔時被誤蓋掉，建議之後手動改選新分類。
     const opt = document.createElement("option");
     opt.value = item.category;
@@ -392,7 +588,9 @@ function fillForm(item) {
   document.getElementById("fStock").value = item.stock;
   document.getElementById("fImage").value = item.image;
   document.getElementById("fDesc").value = item.description;
-  document.getElementById("fTags").value = Array.isArray(item.tags) ? item.tags.join(", ") : "";
+  document.getElementById("fIsNew").checked = item.isNew === true;
+  document.getElementById("fGiftEligible").checked = item.giftEligible === true;
+  renderTagPicker(Array.isArray(item.tags) ? item.tags : []);
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -400,14 +598,17 @@ function fillForm(item) {
 const IMAGE_URL_TEMPLATE = "https://drive.google.com/thumbnail?id=你的檔案ID&sz=w1000";
 
 function clearForm() {
-  ["itemId", "fName", "fPriceCandy", "fPriceCash", "fStock", "fDesc", "fTags"].forEach(
+  ["itemId", "fName", "fPriceCandy", "fPriceCash", "fStock", "fDesc"].forEach(
     (id) => (document.getElementById(id).value = "")
   );
   document.getElementById("fImage").value = IMAGE_URL_TEMPLATE;
+  document.getElementById("fIsNew").checked = false;
+  document.getElementById("fGiftEligible").checked = false;
+  renderTagPicker([]);
   populateSeriesSelect("");
   const categorySelect = document.getElementById("fCategory");
   categorySelect.querySelectorAll("option[data-legacy]").forEach((o) => o.remove());
-  categorySelect.value = CATEGORY_OPTIONS[0];
+  categorySelect.value = TAXONOMY.categories[0] || "";
 }
 
 async function saveItem() {
@@ -419,7 +620,9 @@ async function saveItem() {
     seriesId: document.getElementById("fSeries").value || "",
     seriesName: ALL_SERIES.find((x) => x.id === document.getElementById("fSeries").value)?.name || "",
     category: document.getElementById("fCategory").value,
-    tags: document.getElementById("fTags").value.split(/[,，]/).map(x=>x.trim()).filter(Boolean),
+    tags: getCheckedTags(),
+    isNew: document.getElementById("fIsNew").checked,
+    giftEligible: document.getElementById("fGiftEligible").checked,
     priceCandy,
     priceCash,
     stock: Number(document.getElementById("fStock").value) || 0,
@@ -567,12 +770,14 @@ async function loadSettings() {
   const snap = await getDoc(doc(db, "settings", "main"));
   const settings = snap.exists() ? snap.data() : {};
   document.getElementById("fAnnouncement").value = settings.announcement || "";
+  document.getElementById("fGiftSectionEnabled").checked = settings.giftSectionEnabled === true;
 }
 
 async function saveSettings() {
   const announcement = document.getElementById("fAnnouncement").value;
-  await setDoc(doc(db, "settings", "main"), { announcement }, { merge: true });
-  alert("公告已儲存！");
+  const giftSectionEnabled = document.getElementById("fGiftSectionEnabled").checked;
+  await setDoc(doc(db, "settings", "main"), { announcement, giftSectionEnabled }, { merge: true });
+  alert("設定已儲存！");
 }
 
 document.getElementById("saveSettingsBtn").onclick = (e) => {
