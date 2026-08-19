@@ -42,7 +42,9 @@
       <section id="giftSection" class="gift-section" style="display:none;">
         <div class="gift-section-heading"><h2>🎁 贈品專區</h2></div>
         <div class="gift-section-note">
-          <p>凡購買任一商品即可任選一件贈品。贈品數量有限，送完為止。贈品將不定期補充與更新。</p>
+          <p>凡購買任一商品即可任選一件贈品</p>
+          <p>贈品數量有限，送完為止。</p>
+          <p>贈品將不定期補充與更新。</p>
         </div>
         <div id="giftGrid" class="gift-grid"></div>
         <button type="button" id="giftMoreBtn" class="series-back-btn gift-more-btn" style="display:none;">查看更多贈品 →</button>
@@ -114,9 +116,8 @@
   <button type="button" id="backToTopBtn" class="back-to-top" aria-label="回到頂端">↑</button>
 
 
-  <!-- 817 v3 強制相容修正：直接修實際 DOM，避免舊版商品卡/分頁結構影響 -->
+  <!-- 分類 + Tag 顯示同一排的相容樣式（分頁改由 shop.js 原生處理，不再強制分頁） -->
   <style>
-    /* 分類 + Tag 無論舊/新 DOM 都固定同一排 */
     .card .body > .force-meta-row,
     .card .body > .meta-row {
       display:flex !important;
@@ -135,7 +136,6 @@
     .card .force-meta-row > *,
     .card .meta-row > *{flex:0 0 auto !important;white-space:nowrap !important;margin:0 !important}
 
-    /* 舊商品卡的分類文字也膠囊化 */
     .card .force-meta-row .cat,
     .card .meta-row .cat{
       display:inline-flex !important;align-items:center;padding:3px 7px;border-radius:999px;
@@ -152,36 +152,17 @@
     }
     .card .force-meta-row .item-tags,
     .card .meta-row .item-tags{display:contents !important}
-
-    /* 強制分頁列：永遠存在 */
-    .force-pagination{
-      display:flex !important;align-items:center;justify-content:center;gap:7px;
-      width:100%;margin:18px 0 22px;overflow-x:auto;white-space:nowrap;scrollbar-width:none;
-    }
-    .force-pagination::-webkit-scrollbar{display:none}
-    .force-pagination button{
-      flex:0 0 auto;border:1px solid rgba(255,209,102,.42);background:#121217;color:#fff;
-      border-radius:10px;min-width:36px;height:38px;padding:0 10px;font-weight:800;cursor:pointer;
-    }
-    .force-pagination button.active{background:linear-gradient(135deg,#ffe29a,var(--primary));color:#17130a;border-color:var(--primary)}
-    .force-pagination button:disabled{opacity:.35;cursor:default}
-    .force-pagination .force-divider{color:rgba(255,255,255,.38);font-weight:800}
     @media(max-width:860px){
-      .force-pagination{justify-content:flex-start}
-      .force-pagination button{height:34px;min-width:32px;padding:0 7px;font-size:12px}
       .card .force-meta-row .cat,.card .force-meta-row .item-tag,.card .force-meta-row .item-tags span,
       .card .meta-row .cat,.card .meta-row .item-tag,.card .meta-row .item-tags span{font-size:9px;padding:2px 5px}
     }
   </style>
   <script>
   (()=>{
-    const PAGE_SIZE_FORCE = 50;
-    let forcePage = 1;
     let applying = false;
 
     function forceMetaRows(){
       document.querySelectorAll('#grid .card .body').forEach(body=>{
-        // 新版已經有 meta-row：直接確保 Tag 都在裡面
         let row = body.querySelector(':scope > .meta-row, :scope > .force-meta-row');
         const directCat = body.querySelector(':scope > .cat');
         const directTags = body.querySelector(':scope > .item-tags');
@@ -195,7 +176,6 @@
         }
 
         if(row){
-          // 若舊版 Tag 容器仍在 row 外，搬進 row
           const outsideTags=body.querySelector(':scope > .item-tags');
           if(outsideTags && outsideTags.parentElement===body) row.appendChild(outsideTags);
           const outsideCat=body.querySelector(':scope > .cat');
@@ -204,68 +184,11 @@
       });
     }
 
-    function isAllFurniture(){
-      const title=(document.getElementById('productSectionTitle')?.textContent||'').trim();
-      const back=document.getElementById('backToAllBtn');
-      // 搜尋結果也視為全站商品，保留分頁；進系列頁時不強制分頁
-      const searching=(document.getElementById('searchBox')?.value||'').trim().length>0;
-      return searching || title.includes('全部家具') || !back || back.style.display==='none';
-    }
-
-    function ensureForcePagination(){
-      const grid=document.getElementById('grid');
-      if(!grid || !isAllFurniture()){
-        document.querySelectorAll('.force-pagination').forEach(x=>x.remove());
-        return;
-      }
-      const cards=[...grid.querySelectorAll(':scope > .card')];
-      // 若新版 JS 已經只渲染 50 張，仍顯示至少 1 頁；若舊版渲染全部，這裡直接切頁。
-      const totalPages=Math.max(1,Math.ceil(cards.length/PAGE_SIZE_FORCE));
-      if(forcePage>totalPages) forcePage=totalPages;
-      if(forcePage<1) forcePage=1;
-
-      // 如果 DOM 裡超過 50 張，直接用實際卡片切頁。
-      if(cards.length>PAGE_SIZE_FORCE){
-        cards.forEach((card,idx)=>{
-          const start=(forcePage-1)*PAGE_SIZE_FORCE;
-          card.style.display=(idx>=start && idx<start+PAGE_SIZE_FORCE)?'':'none';
-        });
-      }
-
-      let bottom=document.getElementById('forcePaginationBottom');
-      if(!bottom){
-        bottom=document.createElement('div');bottom.id='forcePaginationBottom';bottom.className='force-pagination';
-        grid.insertAdjacentElement('afterend',bottom);
-      }
-      let top=document.getElementById('forcePaginationTop');
-      if(!top){
-        top=document.createElement('div');top.id='forcePaginationTop';top.className='force-pagination';
-        grid.insertAdjacentElement('beforebegin',top);
-      }
-
-      const pages=[]; const max=6;
-      let start=Math.max(1,forcePage-2), end=Math.min(totalPages,start+max-1);
-      start=Math.max(1,end-max+1);
-      for(let p=start;p<=end;p++) pages.push(p);
-      const html=`<button class="force-prev" ${forcePage===1?'disabled':''}>← 上一頁</button><span class="force-divider">｜</span>${pages.map(p=>`<button class="force-page ${p===forcePage?'active':''}" data-p="${p}">${p}</button>`).join('')}<span class="force-divider">｜</span><button class="force-next" ${forcePage===totalPages?'disabled':''}>下一頁 →</button>`;
-      [top,bottom].forEach(el=>{
-        el.innerHTML=html;
-        el.querySelector('.force-prev').onclick=()=>{if(forcePage>1){forcePage--; applyAll(true)}};
-        el.querySelector('.force-next').onclick=()=>{if(forcePage<totalPages){forcePage++; applyAll(true)}};
-        el.querySelectorAll('.force-page').forEach(b=>b.onclick=()=>{forcePage=+b.dataset.p;applyAll(true)});
-      });
-
-      // 隱藏原本分頁，避免兩套同時出現；由 force pagination 保證畫面一定有。
-      ['paginationTop','paginationBottom'].forEach(id=>{const x=document.getElementById(id);if(x)x.style.display='none'});
-    }
-
-    function applyAll(scroll=false){
+    function applyAll(){
       if(applying) return; applying=true;
       requestAnimationFrame(()=>{
         forceMetaRows();
-        ensureForcePagination();
         applying=false;
-        if(scroll){const t=document.getElementById('productSectionTitle');if(t)window.scrollTo({top:t.offsetTop-15,behavior:'smooth'})}
       });
     }
 
@@ -273,10 +196,6 @@
       applyAll();
       const grid=document.getElementById('grid');
       if(grid) new MutationObserver(()=>applyAll()).observe(grid,{childList:true,subtree:true});
-      ['searchBox','filters','tagFilters','seriesGrid','backToAllBtn'].forEach(id=>{
-        const el=document.getElementById(id);if(el)el.addEventListener('click',()=>{forcePage=1;setTimeout(applyAll,30)});
-      });
-      const search=document.getElementById('searchBox');if(search)search.addEventListener('input',()=>{forcePage=1;setTimeout(applyAll,30)});
       setTimeout(applyAll,300);setTimeout(applyAll,1000);
     });
   })();
