@@ -812,12 +812,22 @@ async function loadSettings() {
   const settings = snap.exists() ? snap.data() : {};
   document.getElementById("fAnnouncement").value = settings.announcement || "";
   document.getElementById("fGiftSectionEnabled").checked = settings.giftSectionEnabled === true;
+  document.getElementById("fGenderFemaleOnly").checked = settings.genderFemaleOnly === true;
+  document.getElementById("fPopupMessage").value = settings.popupMessage || "";
+  document.getElementById("fPopupEnabled").checked = settings.popupEnabled === true;
 }
 
 async function saveSettings() {
   const announcement = document.getElementById("fAnnouncement").value;
   const giftSectionEnabled = document.getElementById("fGiftSectionEnabled").checked;
-  await setDoc(doc(db, "settings", "main"), { announcement, giftSectionEnabled }, { merge: true });
+  const genderFemaleOnly = document.getElementById("fGenderFemaleOnly").checked;
+  const popupMessage = document.getElementById("fPopupMessage").value;
+  const popupEnabled = document.getElementById("fPopupEnabled").checked;
+  await setDoc(
+    doc(db, "settings", "main"),
+    { announcement, giftSectionEnabled, genderFemaleOnly, popupMessage, popupEnabled },
+    { merge: true }
+  );
   alert("設定已儲存！");
 }
 

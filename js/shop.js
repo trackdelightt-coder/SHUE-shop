@@ -295,6 +295,11 @@ async function loadItems() {
   renderGiftSection();
 }
 
+// 是否開啟「僅限女角」模式（後台設定）：開啟後前台只能選女角，男角按鈕會隱藏。
+let GENDER_FEMALE_ONLY = false;
+// 公告彈跳視窗目前的訊息內容（後台設定）：只在內容跟上次看過的不一樣時才會跳出來。
+let POPUP_MESSAGE = "";
+
 async function loadAnnouncement() {
   try {
     const snap = await getDoc(doc(db, "settings", "main"));
@@ -309,9 +314,53 @@ async function loadAnnouncement() {
     }
     GIFT_SECTION_ENABLED = data.giftSectionEnabled === true;
     renderGiftSection();
+
+    GENDER_FEMALE_ONLY = data.genderFemaleOnly === true;
+    applyGenderRestriction();
+
+    POPUP_MESSAGE = data.popupMessage || "";
+    maybeShowPopupAnnouncement(data.popupEnabled === true, POPUP_MESSAGE);
   } catch (err) {
     // 公告／贈品區設定載入失敗不影響下單流程，靜默略過
   }
+}
+
+// 僅限女角模式：隱藏男角按鈕、女角按鈕文字改成「限女角」，並強制把目前選擇改成女角。
+function applyGenderRestriction() {
+  const maleBtn = document.querySelector('#genderToggle .pay-btn[data-gender="男角"]');
+  const femaleBtn = document.querySelector('#genderToggle .pay-btn[data-gender="女角"]');
+  if (!maleBtn || !femaleBtn) return;
+
+  if (GENDER_FEMALE_ONLY) {
+    maleBtn.style.display = "none";
+    femaleBtn.textContent = "🙍‍♀️ 限女角";
+    if (CHARACTER_GENDER !== "女角") {
+      CHARACTER_GENDER = "女角";
+      saveGender();
+    }
+  } else {
+    maleBtn.style.display = "";
+    femaleBtn.textContent = "🙍‍♀️ 女角";
+  }
+  updateGenderToggleUI();
+}
+
+// 公告彈跳視窗：同一個人看過某一版訊息後就不會重複跳出，除非後台把訊息內容改掉。
+function maybeShowPopupAnnouncement(enabled, message) {
+  const overlay = document.getElementById("popupAnnouncementOverlay");
+  if (!overlay) return;
+
+  if (!enabled || !message || !message.trim()) {
+    overlay.style.display = "none";
+    return;
+  }
+  const lastSeen = localStorage.getItem("mstar_popup_seen") || "";
+  if (lastSeen === message) {
+    overlay.style.display = "none";
+    return;
+  }
+  document.getElementById("popupAnnouncementText").textContent = message;
+  overlay.style.display = "flex";
 }
 
 // 分類清單改成在後台「分類與標籤管理」維護，存在 Firestore（settings/taxonomy）。
@@ -547,18 +596,8 @@ function changeGiftQty(id, delta) {
 
 function setPaymentMethod(method) {
   if (method === PAYMENT_METHOD) return;
-  const hasItems = Object.keys(CART).length > 0;
-  if (hasItems) {
-    const ok = confirm(
-      "切換付款方式（糖果／現金）會清空目前購物車，因為同一筆訂單只能用同一種付款方式。確定要切換嗎？"
-    );
-    if (!ok) {
-      updatePayToggleUI();
-      return;
-    }
-    CART = {};
-    saveCart();
-  }
+  // 切換付款方式不清空購物車：商品維持原本的品項跟數量，
+  // 價格會自動改用新付款方式對應的金額重新計算（priceFor 每次都是即時查price Candy/Cash，不需要額外處理）。
   PAYMENT_METHOD = method;
   savePayMethod();
   updatePayToggleUI();
@@ -867,6 +906,11 @@ document.getElementById("seriesOldestBtn")?.addEventListener("click", () => setS
 document.getElementById("backToAllBtn")?.addEventListener("click", closeSpecialView);
 document.getElementById("seriesBottomBackBtn")?.addEventListener("click", closeSpecialView);
 document.getElementById("giftMoreBtn")?.addEventListener("click", openGiftView);
+document.getElementById("popupAnnouncementClose")?.addEventListener("click", () => {
+  localStorage.setItem("mstar_popup_seen", POPUP_MESSAGE);
+  const overlay = document.getElementById("popupAnnouncementOverlay");
+  if (overlay) overlay.style.display = "none";
+});
 document.getElementById("backToTopBtn")?.addEventListener("click", () => window.scrollTo({top:0,behavior:"smooth"}));
 Promise.all([loadItems(), loadSeries()]);
 loadTaxonomy();
