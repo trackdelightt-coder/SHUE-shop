@@ -490,7 +490,31 @@ function renderGiftSection() {
   if (moreBtn) moreBtn.style.display = giftItems.length > GIFT_PREVIEW_COUNT ? "block" : "none";
 }
 
+// 同一件商品可能同時放在「一般購物車」跟「贈品購物車」，兩邊要合併看庫存，
+// 不能各自加到滿，加起來卻超過庫存（結帳時就是這樣合併檢查的，這裡先在畫面上擋掉）。
+function combinedCartQty(id) {
+  return (CART[id] || 0) + (GIFT_CART[id] || 0);
+}
+
+function showCartLimitMsg(item) {
+  const msgBox = document.getElementById("msgBox");
+  if (msgBox) {
+    msgBox.innerHTML = `<div class="msg error">「${item.name}」庫存只剩 ${item.stock} 件，不能再加入更多囉</div>`;
+  }
+}
+
+function atStockLimit(id) {
+  const item = ITEMS.find((i) => i.id === id);
+  if (!item || item.stock === undefined) return false;
+  if (combinedCartQty(id) >= item.stock) {
+    showCartLimitMsg(item);
+    return true;
+  }
+  return false;
+}
+
 function addToCart(id) {
+  if (atStockLimit(id)) return;
   CART[id] = (CART[id] || 0) + 1;
   saveCart();
   renderCart();
@@ -498,6 +522,7 @@ function addToCart(id) {
 
 function changeQty(id, delta) {
   if (!CART[id]) return;
+  if (delta > 0 && atStockLimit(id)) return;
   CART[id] += delta;
   if (CART[id] <= 0) delete CART[id];
   saveCart();
@@ -505,6 +530,7 @@ function changeQty(id, delta) {
 }
 
 function addGiftToCart(id) {
+  if (atStockLimit(id)) return;
   GIFT_CART[id] = (GIFT_CART[id] || 0) + 1;
   saveGiftCart();
   renderCart();
@@ -512,6 +538,7 @@ function addGiftToCart(id) {
 
 function changeGiftQty(id, delta) {
   if (!GIFT_CART[id]) return;
+  if (delta > 0 && atStockLimit(id)) return;
   GIFT_CART[id] += delta;
   if (GIFT_CART[id] <= 0) delete GIFT_CART[id];
   saveGiftCart();
