@@ -730,6 +730,7 @@ document.getElementById("seedBtn").onclick = async () => {
 async function loadOrders() {
   const snap = await getDocs(query(collection(db, "orders"), orderBy("createdAt", "desc")));
   const orders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  renderOrderStats(orders);
   const tbody = document.getElementById("ordersTbody");
   tbody.innerHTML = "";
   orders.forEach((o) => {
@@ -761,6 +762,25 @@ async function loadOrders() {
     tr.querySelector(".del").onclick = () => deleteOrder(o);
     tbody.appendChild(tr);
   });
+}
+
+// 訂單管理上方的「已完成訂單」總收益：只算狀態是「已完成」的訂單，
+// 依付款方式分開加總（同一筆訂單只會用一種付款方式，糖果、現金不會混在同一筆裡）。
+function renderOrderStats(orders) {
+  let candyTotal = 0;
+  let cashTotal = 0;
+  orders.forEach((o) => {
+    if (o.status !== "已完成") return;
+    if (o.paymentMethod === "糖果") {
+      candyTotal += o.total || 0;
+    } else {
+      cashTotal += o.total || 0;
+    }
+  });
+  const candyEl = document.getElementById("statCandyTotal");
+  const cashEl = document.getElementById("statCashTotal");
+  if (candyEl) candyEl.textContent = `🍬 ${candyTotal}`;
+  if (cashEl) cashEl.textContent = `💵 NT$ ${cashTotal}`;
 }
 
 // 幫訂單裡每一樣商品「加回」或「扣掉」庫存數量。
