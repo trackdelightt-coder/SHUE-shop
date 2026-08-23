@@ -624,6 +624,58 @@ img.img-soldout {
   font-size: 13px;
 }
 
+.popup-announcement-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 10, 24, 0.82);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+}
+
+.popup-announcement-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--panel-solid);
+  border: 1px solid rgba(255, 209, 102, 0.5);
+  border-radius: var(--radius);
+  padding: 22px 24px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  color: var(--text);
+}
+
+.popup-announcement-title {
+  font-size: 17px;
+  font-weight: 800;
+  text-align: center;
+  margin-bottom: 12px;
+  color: var(--primary);
+}
+
+.popup-announcement-text {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text);
+  white-space: pre-wrap;
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.popup-announcement-close {
+  width: 100%;
+  padding: 10px;
+  background: linear-gradient(135deg, #ffe29a, var(--primary));
+  border: none;
+  border-radius: 8px;
+  color: #17130a;
+  font-weight: 800;
+  cursor: pointer;
+  font-size: 14px;
+}
+
 .msg {
   padding: 10px 12px;
   border-radius: 8px;
