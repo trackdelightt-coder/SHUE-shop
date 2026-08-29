@@ -678,11 +678,14 @@ async function saveItem() {
   if (id) {
     await updateDoc(doc(db, "items", id), payload);
   } else {
-    // 1 = 最新：新增商品時先把既有商品順序往後推，新商品固定放第 1。
-    await Promise.all(ALL_ITEMS.map((item) =>
-      updateDoc(doc(db, "items", item.id), { sortOrder: Number(item.sortOrder || 0) + 1 })
-    ));
-    await addDoc(collection(db, "items"), { ...payload, active: true, sortOrder: 1 });
+    // 新商品要排在最前面：直接給它一個比目前所有商品都小的 sortOrder 數字就好，
+    // 不用去改動任何一筆既有商品（以前的寫法是把所有商品的 sortOrder 都往後推一格，
+    // 商品一多，新增一件商品就會變成好幾十、好幾百次寫入，很容易把 Firebase 每日寫入額度用光）。
+    const minSortOrder = ALL_ITEMS.reduce(
+      (min, item) => Math.min(min, Number(item.sortOrder || 0)),
+      0
+    );
+    await addDoc(collection(db, "items"), { ...payload, active: true, sortOrder: minSortOrder - 1 });
   }
   clearForm();
   loadItems();
