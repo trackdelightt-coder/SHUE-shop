@@ -13,6 +13,24 @@ import {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+// 流量統計（Firebase Analytics）：買家逛網站這些行為會被記錄下來，
+// 資料會出現在 Firebase 主控台的「Analytics」頁面（包含「即時」報表，可以看到現在有幾個人在線上）。
+// 這裡刻意用「動態載入」+ try/catch 包起來，是因為有些瀏覽器（開隱私模式、裝了廣告阻擋套件像
+// uBlock/Brave 等）本來就會主動擋掉 Analytics 相關的網路請求——如果直接在檔案最上面用一般的
+// import 寫法，只要有人的瀏覽器擋掉這個請求，會導致「整個 shop.js 都讀取失敗」，變成買家看到
+// 一片空白、什麼功能都不能用。改成這樣寫，就算有人擋掉 Analytics，也只是少了流量統計而已，
+// 不會影響網站其他功能（商品列表、購物車、送出訂單）正常運作。
+(async () => {
+  try {
+    const { getAnalytics, isSupported } = await import(
+      "https://www.gstatic.com/firebasejs/12.17.1/firebase-analytics.js"
+    );
+    if (await isSupported()) getAnalytics(app);
+  } catch (err) {
+    // 載入失敗（被擋、離線等）就安靜跳過，不影響網站其他功能
+  }
+})();
+
 // 圖片網址失效時（例如連結被刪除、圖床擋住）顯示的替代圖片，避免出現「???」破圖示
 const PLACEHOLDER_IMG =
   "data:image/svg+xml;utf8," +

@@ -9,4 +9,5 @@ export const firebaseConfig = {
   storageBucket: "mstar-shop.firebasestorage.app",
   messagingSenderId: "750178163759",
   appId: "1:750178163759:web:68ba6027dce0831b71bada",
+  measurementId: "G-QGDGVHGQ91",
 };
