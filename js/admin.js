@@ -37,16 +37,19 @@ async function getStorageModule() {
   return storageModule;
 }
 
-// ---------- 上傳照片前，先把「不是標準網頁格式」的照片轉成 JPG ----------
-// 手機（尤其 iPhone）相簿預設存的是 HEIC 格式：iPhone 自己的瀏覽器看得懂，所以在後台預覽、
-// 在買家頁面用 iPhone 看都正常，但 Android、大部分電腦瀏覽器都讀不懂 HEIC，會整張變成破圖；
-// 「截圖並複製」用的工具也一樣讀不懂，會變成一塊黑色。
-// 這裡上傳前先在瀏覽器裡（用 canvas）把照片重新存成 JPG 再傳到 Firebase，這樣不管買家用什麼
-// 手機、什麼瀏覽器看，都看得到照片。已經是標準格式（JPG/PNG/WEBP/GIF）的話就不用多轉一手，
-// 直接照原始檔案上傳；如果瀏覽器沒辦法讀取原始格式（轉檔失敗），就照原始檔案上傳，不會卡住整個流程。
+// ---------- 上傳照片前，先在瀏覽器裡處理過一輪，統一格式、限制大小 ----------
+// 兩個常見狀況都會處理：
+// 1. 手機（尤其 iPhone）相簿預設存的是 HEIC 格式：iPhone 自己的瀏覽器看得懂，所以在後台預覽、
+//    在買家頁面用 iPhone 看都正常，但 Android、大部分電腦瀏覽器都讀不懂 HEIC，會整張變成破圖，
+//    「截圖並複製」用的工具也一樣讀不懂，會變成一塊黑色。
+// 2. 手機直接拍的照片通常檔案很大（好幾 MB、上千萬畫素），免費的截圖代理服務（images.weserv.nl）
+//    處理太大的原始檔案容易逾時或失敗，一樣會讓截圖變黑；檔案太大也會讓買家頁面圖片載入變慢。
+// 這裡上傳前先在瀏覽器裡（用 canvas）把照片重新存成長邊不超過 1600px 的 JPG 再傳到 Firebase。
+// 已經是標準格式（JPG/PNG/WEBP/GIF）而且尺寸夠小的話，就不用多轉一手，直接照原始檔案上傳，
+// 保留原始畫質；如果瀏覽器沒辦法讀取原始格式（轉檔失敗），也是照原始檔案上傳，不會卡住整個流程。
 const WEB_SAFE_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const MAX_IMAGE_DIMENSION = 1600;
 function normalizeImageFile(file) {
-  if (WEB_SAFE_IMAGE_TYPES.includes(file.type)) return Promise.resolve(file);
   return new Promise((resolve) => {
     let objectUrl;
     try {
@@ -58,11 +61,20 @@ function normalizeImageFile(file) {
     const img = new Image();
     img.onload = () => {
       try {
+        const longEdge = Math.max(img.naturalWidth, img.naturalHeight);
+        const needsFormatConvert = !WEB_SAFE_IMAGE_TYPES.includes(file.type);
+        const needsResize = longEdge > MAX_IMAGE_DIMENSION;
+        if (!needsFormatConvert && !needsResize) {
+          URL.revokeObjectURL(objectUrl);
+          resolve(file); // 已經是標準格式、尺寸也OK，不用多轉一手，保留原始畫質
+          return;
+        }
+        const scale = needsResize ? MAX_IMAGE_DIMENSION / longEdge : 1;
         const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
         const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         canvas.toBlob(
           (blob) => {
             URL.revokeObjectURL(objectUrl);
@@ -74,7 +86,7 @@ function normalizeImageFile(file) {
             }
           },
           "image/jpeg",
-          0.92
+          0.85
         );
       } catch (err) {
         URL.revokeObjectURL(objectUrl);

@@ -41,10 +41,16 @@ const PLACEHOLDER_IMG =
       "</svg>"
   );
 
-// 商品圖片大多放在 Google 雲端硬碟等外部圖床，這些圖床通常不允許「跨網站讀取圖片內容」，
-// 所以平常瀏覽網頁時圖片看起來正常，但「截圖並複製」用的 html2canvas 工具想把圖片畫進截圖時會被擋下來，
-// 變成截圖裡圖片是空白的（但網頁上看起來還是正常的）。
-// 這裡用一個公開的免費圖片代理服務（images.weserv.nl）幫忙轉一手，讓截圖工具能正常讀到圖片。
+// 商品圖片大多放在 Google 雲端硬碟、Firebase Storage 等外部圖床，這些圖床通常不允許「跨網站讀取
+// 圖片內容」，所以平常瀏覽網頁時圖片看起來正常，但「截圖並複製」用的 html2canvas 工具想把圖片畫進
+// 截圖時會被擋下來，變成截圖裡那張圖是一片黑（但網頁上看起來還是正常的，因為單純「顯示」圖片不需要
+// 跨網站授權，只有「把圖片內容讀出來畫進另一張圖」才需要）。
+// 這裡用一個公開的免費圖片代理服務（images.weserv.nl）幫忙轉一手，讓截圖工具能正常讀到圖片；
+// 同時瀏覽器那邊的 <img> 標籤也加上 crossorigin="anonymous" 屬性（在 showOrderSummary 那裡加的），
+// 這是這類跨網站截圖需求的標準做法。另外，手機直接拍的照片檔案通常很大（好幾 MB、上千萬畫素），
+// 免費的代理服務處理太大的原始檔案時容易逾時或失敗，所以後台上傳照片時（js/admin.js 的
+// normalizeImageFile）會先在瀏覽器裡把照片縮小到適合網頁瀏覽的大小，這樣不只截圖比較不會失敗，
+// 買家看商品頁面時圖片也會載入更快。
 function corsProxyImage(url) {
   if (!url) return url;
   if (url.startsWith("data:")) return url; // 本來就是內建的替代圖，不用轉
@@ -757,6 +763,7 @@ function renderCart() {
     const row = document.createElement("div");
     row.className = "cart-line";
     row.innerHTML = `
+      <img class="cart-thumb" src="${imageFor(item, color)}" alt="${escapeHtml(item.name)}" />
       <span class="name">${item.name}${color ? `<span class="cart-line-color">（${color}）</span>` : ""}</span>
       <div class="qty-ctrl">
         <button data-d="-1">−</button>
@@ -765,6 +772,8 @@ function renderCart() {
       </div>
       <span>${PAYMENT_METHOD === "糖果" ? lineTotal : "NT$" + lineTotal}</span>
     `;
+    const thumbEl = row.querySelector(".cart-thumb");
+    thumbEl.onerror = () => { thumbEl.onerror = null; thumbEl.src = PLACEHOLDER_IMG; };
     row.querySelectorAll("button").forEach((btn) => {
       btn.onclick = () => changeQty(id, parseInt(btn.dataset.d, 10), color);
     });
@@ -781,6 +790,7 @@ function renderCart() {
     const row = document.createElement("div");
     row.className = "cart-line cart-line-gift";
     row.innerHTML = `
+      <img class="cart-thumb" src="${imageFor(item, color)}" alt="${escapeHtml(item.name)}" />
       <span class="name">🎁 ${item.name}${color ? `<span class="cart-line-color">（${color}）</span>` : ""}<span class="gift-tag">贈品</span></span>
       <div class="qty-ctrl">
         <button data-d="-1">−</button>
@@ -789,6 +799,8 @@ function renderCart() {
       </div>
       <span class="gift-free">免費</span>
     `;
+    const thumbEl = row.querySelector(".cart-thumb");
+    thumbEl.onerror = () => { thumbEl.onerror = null; thumbEl.src = PLACEHOLDER_IMG; };
     row.querySelectorAll("button").forEach((btn) => {
       btn.onclick = () => changeGiftQty(id, parseInt(btn.dataset.d, 10), color);
     });
@@ -938,7 +950,7 @@ function showOrderSummary({ id, total, paymentMethod, items, buyerName, contact,
       const thumbSrc = i.image ? corsProxyImage(i.image) : PLACEHOLDER_IMG;
       return `
         <div class="order-summary-item${i.isGift ? " order-summary-item-gift" : ""}">
-          <img src="${thumbSrc}" data-original="${i.image || ""}" alt="${i.name}" class="order-summary-thumb" />
+          <img src="${thumbSrc}" data-original="${i.image || ""}" alt="${i.name}" class="order-summary-thumb" crossorigin="anonymous" />
           <span class="order-summary-item-name">${i.name}${i.color ? `（${i.color}）` : ""} x${i.qty}${i.isGift ? '<span class="gift-tag">贈品</span>' : ""}</span>
           <span class="order-summary-item-price">${lineText}</span>
         </div>`;
@@ -960,8 +972,11 @@ function showOrderSummary({ id, total, paymentMethod, items, buyerName, contact,
     .forEach((img) => {
       img.onerror = () => {
         const original = img.dataset.original;
-        // 代理服務失敗的話，先試試看原本的圖片網址（至少畫面上看得到，只是截圖時可能還是會空白）
+        // 代理服務失敗的話，先試試看原本的圖片網址（至少畫面上看得到，只是截圖時可能還是會空白）。
+        // 原始網址通常沒有開放跨網站讀取，如果還留著 crossorigin 屬性去讀反而會直接載入失敗，
+        // 所以退回原始網址之前要先拿掉這個屬性。
         if (original && img.src !== original) {
+          img.removeAttribute("crossorigin");
           img.src = original;
         } else {
           img.onerror = null;
