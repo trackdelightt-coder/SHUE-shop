@@ -24,6 +24,16 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// 把文字裡的特殊符號轉成安全的顯示方式，避免分身名稱裡不小心打到 < > " 這些符號時，
+// 把後台表格的排版弄壞掉。
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 // 圖片網址失效時顯示的替代圖片，避免後台商品列表出現「???」破圖示
 const PLACEHOLDER_IMG =
   "data:image/svg+xml;utf8," +
@@ -531,6 +541,12 @@ function renderItemsTable() {
       isSoldOut ? '<span class="mini-badge soldout">已售完</span>' : "",
       item.giftEligible ? '<span class="mini-badge gift">🎁贈品</span>' : "",
     ].join("");
+    const altStockList = Array.isArray(item.stockByAlt) ? item.stockByAlt.filter((r) => r && r.alt) : [];
+    const altStockHtml = altStockList.length
+      ? `<div class="alt-stock-hint" title="${altStockList
+          .map((r) => `${escapeHtml(r.alt)}：${Number(r.qty) || 0}`)
+          .join("\n")}">🧍 ${altStockList.length}個分身</div>`
+      : "";
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td><img src="${item.image}" style="width:60px;height:44px;object-fit:cover;border-radius:6px;" /></td>
@@ -539,7 +555,7 @@ function renderItemsTable() {
       <td>${item.category}</td>
       <td>🍬 ${item.priceCandy}</td>
       <td>💵 NT$ ${item.priceCash}</td>
-      <td>${item.stock}</td>
+      <td>${item.stock}${altStockHtml}</td>
       <td><span class="badge ${item.active ? "on" : "off"}">${item.active ? "上架中" : "已下架"}</span></td>
       <td class="row-actions">
         <button class="move-up" ${idx === 0 ? "disabled" : ""} title="往上移">▲</button>
@@ -606,6 +622,63 @@ async function moveItem(idx, direction) {
   loadItems();
 }
 
+// ---------- 分身庫存明細（記錄這件商品目前分散在哪些分身身上，方便出貨時知道要去哪個分身拿） ----------
+function renderAltStockRows(list) {
+  const box = document.getElementById("altStockRows");
+  if (!box) return;
+  box.innerHTML = "";
+  const rows = Array.isArray(list) && list.length ? list : [{ alt: "", qty: "" }];
+  rows.forEach((row) => addAltStockRow(row.alt || "", row.qty === 0 ? 0 : row.qty || ""));
+  updateAltStockTotal();
+}
+
+function addAltStockRow(alt = "", qty = "") {
+  const box = document.getElementById("altStockRows");
+  if (!box) return;
+  const row = document.createElement("div");
+  row.className = "alt-stock-row";
+  row.innerHTML = `
+    <input type="text" class="alt-name" placeholder="分身名稱（例：小號A）" value="${alt}" />
+    <input type="number" class="alt-qty" placeholder="數量" value="${qty}" min="0" />
+    <button type="button" class="del-alt-row" title="刪除這一行">×</button>
+  `;
+  row.querySelector(".del-alt-row").onclick = () => {
+    row.remove();
+    // 至少留一行空白，方便繼續輸入
+    if (!box.querySelector(".alt-stock-row")) addAltStockRow();
+    updateAltStockTotal();
+  };
+  row.querySelector(".alt-qty").addEventListener("input", updateAltStockTotal);
+  box.appendChild(row);
+}
+
+function getAltStockFromForm() {
+  const rows = Array.from(document.querySelectorAll("#altStockRows .alt-stock-row"));
+  return rows
+    .map((row) => ({
+      alt: row.querySelector(".alt-name").value.trim(),
+      qty: Number(row.querySelector(".alt-qty").value) || 0,
+    }))
+    .filter((row) => row.alt); // 分身名稱沒填的話，這一行就不算數，不會存進資料庫
+}
+
+function updateAltStockTotal() {
+  const el = document.getElementById("altStockTotal");
+  if (!el) return;
+  const total = getAltStockFromForm().reduce((sum, row) => sum + row.qty, 0);
+  const stockVal = Number(document.getElementById("fStock").value) || 0;
+  el.textContent = `分身加總：${total} 件`;
+  el.classList.toggle("mismatch", getAltStockFromForm().length > 0 && total !== stockVal);
+  if (getAltStockFromForm().length > 0 && total !== stockVal) {
+    el.textContent += `（跟庫存欄位的 ${stockVal} 對不上，記得檢查一下）`;
+  }
+}
+
+document.getElementById("addAltStockRowBtn")?.addEventListener("click", () => {
+  addAltStockRow();
+});
+document.getElementById("fStock")?.addEventListener("input", updateAltStockTotal);
+
 function fillForm(item) {
   document.getElementById("itemId").value = item.id;
   document.getElementById("fName").value = item.name;
@@ -632,6 +705,7 @@ function fillForm(item) {
   document.getElementById("fIsNew").checked = item.isNew === true;
   document.getElementById("fGiftEligible").checked = item.giftEligible === true;
   renderTagPicker(Array.isArray(item.tags) ? item.tags : []);
+  renderAltStockRows(Array.isArray(item.stockByAlt) ? item.stockByAlt : []);
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -646,6 +720,7 @@ function clearForm() {
   document.getElementById("fIsNew").checked = false;
   document.getElementById("fGiftEligible").checked = false;
   renderTagPicker([]);
+  renderAltStockRows([]);
   populateSeriesSelect("");
   const categorySelect = document.getElementById("fCategory");
   categorySelect.querySelectorAll("option[data-legacy]").forEach((o) => o.remove());
@@ -667,6 +742,7 @@ async function saveItem() {
     priceCandy,
     priceCash,
     stock: Number(document.getElementById("fStock").value) || 0,
+    stockByAlt: getAltStockFromForm(),
     image: document.getElementById("fImage").value.trim(),
     description: document.getElementById("fDesc").value.trim(),
   };
