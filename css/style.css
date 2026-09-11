@@ -413,6 +413,16 @@ img.img-soldout {
   color: #e8ebf7;
 }
 
+.cart-thumb {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 6px;
+  margin-right: 8px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.055);
+}
+
 .cart-line .name { flex: 1; }
 
 .cart-line-color {
