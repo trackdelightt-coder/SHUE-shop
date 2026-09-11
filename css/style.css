@@ -1075,6 +1075,25 @@ tr:hover td { background: rgba(255,255,255,.018); }
   white-space: nowrap;
 }
 
+.image-upload-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.image-upload-row input[type="file"] {
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+}
+.image-upload-status { font-size: 13px; color: var(--muted); }
+.image-upload-status.error { color: var(--danger); }
+.image-upload-status.success { color: var(--teal); }
+.image-preview {
+  display: block;
+  margin-top: 10px;
+  max-width: 220px;
+  max-height: 160px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
 .tag-picker {
   display: flex;
   flex-wrap: wrap;
