@@ -706,8 +706,16 @@ function showImagePreview(url) {
 
 document.getElementById("fImageFile")?.addEventListener("change", async (e) => {
   const file = e.target.files[0];
-  const statusEl = document.getElementById("imageUploadStatus");
   if (!file) return;
+  // 上傳照片、跟「辨識照片上的文字幫忙填商品名稱」是兩件各自獨立的事，同時進行，
+  // 其中一件失敗（例如網路問題、辨識工具載入失敗）都不會影響另一件正常運作。
+  uploadImageFile(file);
+  tryFillNameFromImage(file);
+  e.target.value = "";
+});
+
+async function uploadImageFile(file) {
+  const statusEl = document.getElementById("imageUploadStatus");
   if (!statusEl) return;
   statusEl.textContent = "上傳中...";
   statusEl.className = "image-upload-status";
@@ -728,10 +736,55 @@ document.getElementById("fImageFile")?.addEventListener("change", async (e) => {
       "❌ 上傳失敗，可能是 Firebase Storage 還沒開通或設定權限的問題，可以先改用手動貼網址的方式，或是把這個錯誤截圖起來問問幫妳架站的人：" +
       (err && err.message ? err.message : String(err));
     statusEl.className = "image-upload-status error";
-  } finally {
-    e.target.value = "";
   }
-});
+}
+
+// ---------- 從照片上「掃字」幫忙填商品名稱（免費、純瀏覽器端跑，不用AI付費服務） ----------
+// 用的是 Tesseract.js，這是免費、開源的文字辨識工具，直接在瀏覽器裡跑，不會把照片傳去任何
+// 第三方伺服器，也不會產生任何費用。缺點是準確度沒辦法保證百分之百，遊戲截圖上的字體、特效
+// 都可能讓辨識結果不準，所以只會在「商品名稱」欄位還是空的時候才自動幫忙填，並且提醒妳要
+// 自己確認一下，不會霸道地覆蓋掉妳已經手動打好的名稱。
+let tesseractLoadPromise = null;
+function loadTesseract() {
+  if (window.Tesseract) return Promise.resolve(window.Tesseract);
+  if (tesseractLoadPromise) return tesseractLoadPromise;
+  tesseractLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+    script.onload = () => resolve(window.Tesseract);
+    script.onerror = () => reject(new Error("文字辨識工具載入失敗"));
+    document.head.appendChild(script);
+  });
+  return tesseractLoadPromise;
+}
+
+async function tryFillNameFromImage(file) {
+  const nameInput = document.getElementById("fName");
+  const hintEl = document.getElementById("nameOcrHint");
+  if (!nameInput || !hintEl) return;
+  if (nameInput.value.trim()) return; // 已經有名稱了，不要自動蓋掉妳打好的字
+  hintEl.textContent = "📖 正在幫妳看照片上有沒有名稱可以自動填入…（第一次使用會比較慢，要先下載辨識用的字典）";
+  hintEl.className = "name-ocr-hint";
+  try {
+    const Tesseract = await loadTesseract();
+    const { data } = await Tesseract.recognize(file, "chi_tra+eng");
+    const candidate = (data.text || "")
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean)[0];
+    if (candidate && !nameInput.value.trim()) {
+      nameInput.value = candidate;
+      hintEl.textContent = `✅ 已經幫妳從照片填入「${candidate}」，不一定準確，記得確認一下`;
+      hintEl.className = "name-ocr-hint success";
+    } else {
+      hintEl.textContent = "沒有在照片上掃到清楚的文字，麻煩自己打商品名稱囉";
+    }
+  } catch (err) {
+    console.error("[OCR] 文字辨識失敗:", err);
+    hintEl.textContent = "";
+    // 辨識失敗就安靜跳過，不影響上傳照片或其他功能，妳自己打名稱就好
+  }
+}
 
 // 手動改網址欄位時，也順便更新一下預覽圖（例如她自己貼了新的網址進去）
 document.getElementById("fImage")?.addEventListener("change", (e) => {
@@ -768,6 +821,8 @@ function fillForm(item) {
   showImagePreview(item.image);
   const statusEl = document.getElementById("imageUploadStatus");
   if (statusEl) { statusEl.textContent = ""; statusEl.className = "image-upload-status"; }
+  const nameHintEl = document.getElementById("nameOcrHint");
+  if (nameHintEl) { nameHintEl.textContent = ""; nameHintEl.className = "name-ocr-hint"; }
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -786,6 +841,8 @@ function clearForm() {
   showImagePreview("");
   const statusEl = document.getElementById("imageUploadStatus");
   if (statusEl) { statusEl.textContent = ""; statusEl.className = "image-upload-status"; }
+  const nameHintEl = document.getElementById("nameOcrHint");
+  if (nameHintEl) { nameHintEl.textContent = ""; nameHintEl.className = "name-ocr-hint"; }
   populateSeriesSelect("");
   const categorySelect = document.getElementById("fCategory");
   categorySelect.querySelectorAll("option[data-legacy]").forEach((o) => o.remove());
