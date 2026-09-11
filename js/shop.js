@@ -45,15 +45,23 @@ const PLACEHOLDER_IMG =
 // 圖片內容」，所以平常瀏覽網頁時圖片看起來正常，但「截圖並複製」用的 html2canvas 工具想把圖片畫進
 // 截圖時會被擋下來，變成截圖裡那張圖是一片黑（但網頁上看起來還是正常的，因為單純「顯示」圖片不需要
 // 跨網站授權，只有「把圖片內容讀出來畫進另一張圖」才需要）。
-// 這裡用一個公開的免費圖片代理服務（images.weserv.nl）幫忙轉一手，讓截圖工具能正常讀到圖片；
-// 同時瀏覽器那邊的 <img> 標籤也加上 crossorigin="anonymous" 屬性（在 showOrderSummary 那裡加的），
-// 這是這類跨網站截圖需求的標準做法。另外，手機直接拍的照片檔案通常很大（好幾 MB、上千萬畫素），
-// 免費的代理服務處理太大的原始檔案時容易逾時或失敗，所以後台上傳照片時（js/admin.js 的
-// normalizeImageFile）會先在瀏覽器裡把照片縮小到適合網頁瀏覽的大小，這樣不只截圖比較不會失敗，
-// 買家看商品頁面時圖片也會載入更快。
+// 對 Google 雲端硬碟這類我們管不到的外部圖床，用一個公開的免費圖片代理服務（images.weserv.nl）
+// 幫忙轉一手，讓截圖工具能正常讀到圖片。但這個免費服務不一定每次都穩定（處理大檔案容易逾時、
+// 有時候回應也沒有正確加上授權標頭），實測發現拿它來處理 Firebase Storage 的照片會不穩定。
+// Firebase Storage 是我們自己的服務、自己可以設定，所以改成「直接跳過代理、直接讀取原始網址」，
+// 只要後台有照 SETUP 文件把 Storage 的 CORS 設定好（一次性設定），這樣最穩定、也不用依賴第三方
+// 免費服務。瀏覽器那邊的 <img> 標籤也要配合加上 crossorigin="anonymous" 屬性（在 showOrderSummary
+// 那裡加的），這是這類跨網站截圖需求的標準做法。另外，手機直接拍的照片檔案通常很大（好幾 MB、
+// 上千萬畫素），所以後台上傳照片時（js/admin.js 的 normalizeImageFile）會先在瀏覽器裡把照片縮小到
+// 適合網頁瀏覽的大小，這樣買家看商品頁面時圖片也會載入更快。
 function corsProxyImage(url) {
   if (!url) return url;
   if (url.startsWith("data:")) return url; // 本來就是內建的替代圖，不用轉
+  // Firebase Storage 的照片是我們自己的服務，只要設定好 CORS，直接讀取原始網址最穩定，
+  // 不用再繞經容易不穩定的第三方免費代理服務。
+  if (url.includes("firebasestorage.googleapis.com") || url.includes(".firebasestorage.app")) {
+    return url;
+  }
   const stripped = url.replace(/^https?:\/\//, "");
   return `https://images.weserv.nl/?url=${encodeURIComponent(stripped)}`;
 }
@@ -972,11 +980,27 @@ function showOrderSummary({ id, total, paymentMethod, items, buyerName, contact,
     .forEach((img) => {
       img.onerror = () => {
         const original = img.dataset.original;
-        // 代理服務失敗的話，先試試看原本的圖片網址（至少畫面上看得到，只是截圖時可能還是會空白）。
-        // 原始網址通常沒有開放跨網站讀取，如果還留著 crossorigin 屬性去讀反而會直接載入失敗，
-        // 所以退回原始網址之前要先拿掉這個屬性。
-        if (original && img.src !== original) {
+        if (!original) {
+          img.onerror = null;
+          img.src = PLACEHOLDER_IMG;
+          return;
+        }
+        // 第一層失敗可能是代理服務掛了，也可能是 Firebase Storage 還沒設定好 CORS，
+        // 瀏覽器直接拒絕載入帶 crossorigin 屬性的圖片請求（這種情況比代理失敗更嚴重，
+        // 因為原本代理失敗至少畫面上看得到照片，這種是直接整張空白）。
+        // 不管是哪一種，都先拿掉 crossorigin 屬性、強制重新載入原始網址一次，
+        // 這樣畫面上至少一定看得到照片（只是拿掉 crossorigin 之後這張圖就沒辦法被
+        // 「截圖並複製」讀取像素了，截圖時那張照片的位置可能還是會空白，
+        // 要等 Firebase Storage 那邊設定好 CORS 之後兩個才會都正常）。
+        if (img.hasAttribute("crossorigin")) {
           img.removeAttribute("crossorigin");
+          img.onerror = () => {
+            img.onerror = null;
+            img.src = PLACEHOLDER_IMG;
+          };
+          // 強制重新載入：就算網址字串跟現在一樣，拿掉 crossorigin 屬性後也要真的
+          // 重新發一次請求（不是瀏覽器誤判「網址沒變就不用重載」）。
+          img.src = "";
           img.src = original;
         } else {
           img.onerror = null;
@@ -1001,31 +1025,54 @@ async function captureAndCopyOrderSummary() {
   }
 
   captureBtn.disabled = true;
-  captureBtn.textContent = "截圖中...";
+  captureBtn.textContent = "處理中...";
+  captureMsg.textContent = "";
+
+  // 手機瀏覽器（尤其是 iPhone 的 Safari）對「自動複製圖片到剪貼簿」的支援很不穩定，
+  // 常常會直接失敗，退回去下載檔案——買家還要自己去下載清單裡找那個檔案再傳出去，很麻煩，
+  // 而且下載完之後剪貼簿裡根本沒有東西，難怪會貼不出來。
+  // 所以這裡改成三個順位都試過一輪，盡量讓買家不用自己想辦法：
+  // 1) 複製到剪貼簿（電腦版 Discord/LINE 桌面版可以直接 Ctrl+V，最快）
+  // 2) 手機的原生分享清單（可以直接點 LINE 或 Discord 圖示把圖片傳出去，不用「貼上」這個動作）
+  // 3) 都不支援的話，才退回下載圖片，請買家自己傳給賣家
   try {
     const canvas = await html2canvas(target, { backgroundColor: "#101a33", scale: 2, useCORS: true });
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
     if (!blob) throw new Error("轉檔失敗");
 
     if (navigator.clipboard && window.ClipboardItem) {
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-      captureMsg.textContent = "✅ 已複製到剪貼簿！到 Discord 訊息框按 Ctrl+V（Mac 是 Cmd+V）貼上就可以了。";
-    } else {
-      throw new Error("此瀏覽器不支援自動複製");
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+        captureMsg.textContent = "✅ 已複製到剪貼簿！到 Discord 訊息框按 Ctrl+V（Mac 是 Cmd+V）貼上就可以了。";
+        return;
+      } catch (clipboardErr) {
+        // 複製失敗（手機瀏覽器常見），往下改試「原生分享」
+      }
     }
+
+    const file = new File([blob], "訂單截圖.png", { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: "訂單截圖" });
+        captureMsg.textContent = "✅ 已開啟分享，選 LINE 或 Discord 傳給賣家就可以了。";
+        return;
+      } catch (shareErr) {
+        if (shareErr && shareErr.name === "AbortError") {
+          // 買家自己在分享清單裡按了取消，不是真的錯誤，不用顯示失敗訊息
+          return;
+        }
+        // 分享也失敗的話，繼續往下改成下載圖片
+      }
+    }
+
+    const dataUrl = canvas.toDataURL("image/png");
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    link.download = "訂單截圖.png";
+    link.click();
+    captureMsg.textContent = "此瀏覽器不支援自動複製或分享，已改成直接下載圖片，下載完後在「檔案」App 或下載清單裡找到「訂單截圖.png」，再傳給賣家即可。";
   } catch (err) {
-    // 瀏覽器不支援自動複製剪貼簿時，改成直接下載圖片，買家把圖片傳給賣家即可
-    try {
-      const canvas = await html2canvas(target, { backgroundColor: "#101a33", scale: 2, useCORS: true });
-      const dataUrl = canvas.toDataURL("image/png");
-      const link = document.createElement("a");
-      link.href = dataUrl;
-      link.download = "訂單截圖.png";
-      link.click();
-      captureMsg.textContent = "此瀏覽器不支援自動複製，已改成直接下載圖片，把圖片傳給賣家即可。";
-    } catch (err2) {
-      captureMsg.textContent = "截圖失敗，請直接手動截圖這個畫面。";
-    }
+    captureMsg.textContent = "截圖失敗，請直接手動截圖這個畫面。";
   } finally {
     captureBtn.disabled = false;
     captureBtn.textContent = "📸 截圖並複製";

@@ -1058,31 +1058,47 @@ async function saveItem() {
     return;
   }
 
-  if (id) {
-    await updateDoc(doc(db, "items", id), payload);
-  } else {
-    // 新商品要排在最前面：直接給它一個比目前所有商品都小的 sortOrder 數字就好，
-    // 不用去改動任何一筆既有商品（以前的寫法是把所有商品的 sortOrder 都往後推一格，
-    // 商品一多，新增一件商品就會變成好幾十、好幾百次寫入，很容易把 Firebase 每日寫入額度用光）。
-    const minSortOrder = ALL_ITEMS.reduce(
-      (min, item) => Math.min(min, Number(item.sortOrder || 0)),
-      0
-    );
-    await addDoc(collection(db, "items"), { ...payload, active: true, sortOrder: minSortOrder - 1 });
+  try {
+    if (id) {
+      await updateDoc(doc(db, "items", id), payload);
+    } else {
+      // 新商品要排在最前面：直接給它一個比目前所有商品都小的 sortOrder 數字就好，
+      // 不用去改動任何一筆既有商品（以前的寫法是把所有商品的 sortOrder 都往後推一格，
+      // 商品一多，新增一件商品就會變成好幾十、好幾百次寫入，很容易把 Firebase 每日寫入額度用光）。
+      const minSortOrder = ALL_ITEMS.reduce(
+        (min, item) => Math.min(min, Number(item.sortOrder || 0)),
+        0
+      );
+      await addDoc(collection(db, "items"), { ...payload, active: true, sortOrder: minSortOrder - 1 });
+    }
+  } catch (err) {
+    alert("儲存失敗：" + (err && err.message ? err.message : err));
+    return;
   }
   clearForm();
   loadItems();
 }
 
 async function toggleActive(item) {
-  await updateDoc(doc(db, "items", item.id), { active: !item.active });
-  loadItems();
+  try {
+    await updateDoc(doc(db, "items", item.id), { active: !item.active });
+    loadItems();
+  } catch (err) {
+    alert("狀態切換失敗：" + (err && err.message ? err.message : err));
+  }
 }
 
 async function deleteItem(id) {
   if (!confirm("確定要刪除這個商品嗎？")) return;
-  await deleteDoc(doc(db, "items", id));
-  loadItems();
+  try {
+    await deleteDoc(doc(db, "items", id));
+    loadItems();
+  } catch (err) {
+    // 原本這裡沒有 try/catch，刪除失敗（例如權限被擋）時畫面上完全不會顯示任何東西，
+    // 只有在瀏覽器開發者工具的 Console 才看得到錯誤，一般人根本不會發現到底發生什麼事。
+    // 現在改成直接跳出提示，至少看得到真正的錯誤原因。
+    alert("刪除失敗：" + (err && err.message ? err.message : err));
+  }
 }
 
 // ---------- 匯入範例商品（只需要在第一次使用、資料庫是空的時候按一次） ----------
@@ -1237,14 +1253,18 @@ async function updateOrderStatus(order, newStatus) {
   const oldStatus = order.status;
   if (oldStatus === newStatus) return;
 
-  if (newStatus === "已取消" && oldStatus !== "已取消") {
-    await adjustStockForOrder(order, +1);
-  } else if (oldStatus === "已取消" && newStatus !== "已取消") {
-    await adjustStockForOrder(order, -1);
-  }
+  try {
+    if (newStatus === "已取消" && oldStatus !== "已取消") {
+      await adjustStockForOrder(order, +1);
+    } else if (oldStatus === "已取消" && newStatus !== "已取消") {
+      await adjustStockForOrder(order, -1);
+    }
 
-  await updateDoc(doc(db, "orders", order.id), { status: newStatus });
-  loadOrders();
+    await updateDoc(doc(db, "orders", order.id), { status: newStatus });
+    loadOrders();
+  } catch (err) {
+    alert("訂單狀態更新失敗：" + (err && err.message ? err.message : err));
+  }
 }
 
 async function deleteOrder(order) {
@@ -1253,8 +1273,12 @@ async function deleteOrder(order) {
       ? "\n\n⚠️ 這筆訂單還沒有取消，刪除不會自動退回庫存。如果商品其實沒有出貨，建議先把狀態改成「已取消」（庫存會自動加回去）再刪除。"
       : "";
   if (!confirm(`確定要刪除這筆訂單嗎？刪除後無法復原。${stockWarning}`)) return;
-  await deleteDoc(doc(db, "orders", order.id));
-  loadOrders();
+  try {
+    await deleteDoc(doc(db, "orders", order.id));
+    loadOrders();
+  } catch (err) {
+    alert("刪除訂單失敗：" + (err && err.message ? err.message : err));
+  }
 }
 
 // ---------- Settings (公告) ----------
