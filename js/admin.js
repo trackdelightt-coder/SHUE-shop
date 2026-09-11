@@ -560,6 +560,12 @@ function renderItemsTable() {
           .map((r) => `${escapeHtml(r.alt)}：${Number(r.qty) || 0}`)
           .join("\n")}">🧍 ${altStockList.length}個分身</div>`
       : "";
+    const colorVariantList = Array.isArray(item.colorVariants) ? item.colorVariants.filter((v) => v && v.color) : [];
+    const colorVariantHtml = colorVariantList.length
+      ? `<div class="color-variant-hint" title="${colorVariantList
+          .map((v) => `${escapeHtml(v.color)}：${Number(v.stock) || 0}`)
+          .join("\n")}">🎨 ${colorVariantList.length}色</div>`
+      : "";
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td><img src="${item.image}" style="width:60px;height:44px;object-fit:cover;border-radius:6px;" /></td>
@@ -568,7 +574,7 @@ function renderItemsTable() {
       <td>${item.category}</td>
       <td>🍬 ${item.priceCandy}</td>
       <td>💵 NT$ ${item.priceCash}</td>
-      <td>${item.stock}${altStockHtml}</td>
+      <td>${item.stock}${altStockHtml}${colorVariantHtml}</td>
       <td><span class="badge ${item.active ? "on" : "off"}">${item.active ? "上架中" : "已下架"}</span></td>
       <td class="row-actions">
         <button class="move-up" ${idx === 0 ? "disabled" : ""} title="往上移">▲</button>
@@ -692,6 +698,110 @@ document.getElementById("addAltStockRowBtn")?.addEventListener("click", () => {
 });
 document.getElementById("fStock")?.addEventListener("input", updateAltStockTotal);
 
+// ---------- 顏色款式（同一件商品分不同顏色，買家頁面會出現顏色選擇按鈕，每個顏色各自獨立算庫存） ----------
+// 只要商品有顏色款式，最上面的「庫存」欄位就會自動鎖定＝所有顏色庫存加總，不能再手動改，
+// 這樣才能保證結帳真正會檢查、會扣的那個數字，永遠跟下面顏色分開列出來的庫存兜得起來。
+function renderColorVariantRows(list) {
+  const box = document.getElementById("colorVariantRows");
+  if (!box) return;
+  box.innerHTML = "";
+  const rows = Array.isArray(list) ? list : [];
+  rows.forEach((row) => addColorVariantRow(row.color || "", row.image || "", row.stock === 0 ? 0 : row.stock || ""));
+  updateColorVariantStockLock();
+}
+
+function addColorVariantRow(color = "", image = "", stock = "") {
+  const box = document.getElementById("colorVariantRows");
+  if (!box) return;
+  const row = document.createElement("div");
+  row.className = "color-variant-row";
+  row.innerHTML = `
+    <input type="text" class="cv-color" placeholder="顏色名稱（例：藍色）" value="${color}" />
+    <div class="cv-image-col">
+      <input type="file" class="cv-image-file" accept="image/*" />
+      <input type="hidden" class="cv-image-url" value="${image}" />
+      <img class="cv-image-preview" style="${image ? "" : "display:none;"}" src="${image}" />
+      <span class="cv-image-status"></span>
+    </div>
+    <input type="number" class="cv-stock" placeholder="庫存" value="${stock}" min="0" />
+    <button type="button" class="del-cv-row" title="刪除這個顏色">×</button>
+  `;
+  row.querySelector(".del-cv-row").onclick = () => {
+    row.remove();
+    updateColorVariantStockLock();
+  };
+  row.querySelector(".cv-stock").addEventListener("input", updateColorVariantStockLock);
+  row.querySelector(".cv-color").addEventListener("input", updateColorVariantStockLock);
+  row.querySelector(".cv-image-file").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    await uploadColorVariantImage(file, row);
+    e.target.value = "";
+  });
+  box.appendChild(row);
+}
+
+// 跟主要的「商品照片」上傳邏輯是同一套（同一個 Firebase Storage），只是改成傳到這個顏色自己的欄位裡。
+async function uploadColorVariantImage(file, row) {
+  const statusEl = row.querySelector(".cv-image-status");
+  const urlInput = row.querySelector(".cv-image-url");
+  const previewImg = row.querySelector(".cv-image-preview");
+  if (statusEl) { statusEl.textContent = "上傳中..."; statusEl.className = "cv-image-status"; }
+  try {
+    const { ref, uploadBytes, getDownloadURL } = await getStorageModule();
+    const path = `items/${Date.now()}_${file.name}`;
+    const fileRef = ref(storageInstance, path);
+    await uploadBytes(fileRef, file);
+    const url = await getDownloadURL(fileRef);
+    if (urlInput) urlInput.value = url;
+    if (previewImg) { previewImg.src = url; previewImg.style.display = "block"; }
+    if (statusEl) { statusEl.textContent = "✅ 已上傳"; statusEl.className = "cv-image-status success"; }
+  } catch (err) {
+    console.error("[Storage] 顏色款式照片上傳失敗:", err);
+    if (statusEl) {
+      statusEl.textContent = "❌ 上傳失敗，可以再試一次；先不放也沒關係，買家選到這個顏色時會顯示商品原本的封面照";
+      statusEl.className = "cv-image-status error";
+    }
+  }
+}
+
+function getColorVariantsFromForm() {
+  const rows = Array.from(document.querySelectorAll("#colorVariantRows .color-variant-row"));
+  return rows
+    .map((row) => ({
+      color: row.querySelector(".cv-color").value.trim(),
+      image: row.querySelector(".cv-image-url").value.trim(),
+      stock: Number(row.querySelector(".cv-stock").value) || 0,
+    }))
+    .filter((row) => row.color); // 顏色名稱沒填的話，這一行不算數，不會存進資料庫
+}
+
+function updateColorVariantStockLock() {
+  const stockInput = document.getElementById("fStock");
+  const hintEl = document.getElementById("fStockAutoHint");
+  if (!stockInput) return;
+  const variants = getColorVariantsFromForm();
+  if (variants.length > 0) {
+    const total = variants.reduce((sum, v) => sum + v.stock, 0);
+    stockInput.value = total;
+    stockInput.readOnly = true;
+    stockInput.classList.add("auto-locked");
+    if (hintEl) {
+      hintEl.textContent = `🔒 已鎖定：自動等於下面 ${variants.length} 個顏色的庫存加總（共 ${total} 件），不用也不能手動改這裡`;
+      hintEl.style.display = "block";
+    }
+  } else {
+    stockInput.readOnly = false;
+    stockInput.classList.remove("auto-locked");
+    if (hintEl) { hintEl.textContent = ""; hintEl.style.display = "none"; }
+  }
+  updateAltStockTotal();
+}
+
+document.getElementById("addColorVariantRowBtn")?.addEventListener("click", () => {
+  addColorVariantRow();
+});
+
 function showImagePreview(url) {
   const preview = document.getElementById("imagePreview");
   if (!preview) return;
@@ -813,10 +923,11 @@ function fillForm(item) {
   document.getElementById("fPriceCash").value = item.priceCash;
   document.getElementById("fStock").value = item.stock;
   document.getElementById("fImage").value = item.image;
-  document.getElementById("fDesc").value = item.description;
+  document.getElementById("fDesc").value = item.description || "";
   document.getElementById("fIsNew").checked = item.isNew === true;
   document.getElementById("fGiftEligible").checked = item.giftEligible === true;
   renderTagPicker(Array.isArray(item.tags) ? item.tags : []);
+  renderColorVariantRows(Array.isArray(item.colorVariants) ? item.colorVariants : []);
   renderAltStockRows(Array.isArray(item.stockByAlt) ? item.stockByAlt : []);
   showImagePreview(item.image);
   const statusEl = document.getElementById("imageUploadStatus");
@@ -837,6 +948,7 @@ function clearForm() {
   document.getElementById("fIsNew").checked = false;
   document.getElementById("fGiftEligible").checked = false;
   renderTagPicker([]);
+  renderColorVariantRows([]);
   renderAltStockRows([]);
   showImagePreview("");
   const statusEl = document.getElementById("imageUploadStatus");
@@ -853,6 +965,12 @@ async function saveItem() {
   const id = document.getElementById("itemId").value;
   const priceCandy = Number(document.getElementById("fPriceCandy").value);
   const priceCash = Number(document.getElementById("fPriceCash").value);
+  const colorVariants = getColorVariantsFromForm();
+  // 有顏色款式的商品，「庫存」一律用顏色加總算出來（不管畫面上鎖定欄位當下顯示的是不是最新值），
+  // 這樣才能保證結帳真正會用到的庫存數字，永遠跟顏色款式資料一致。
+  const stock = colorVariants.length > 0
+    ? colorVariants.reduce((sum, v) => sum + v.stock, 0)
+    : Number(document.getElementById("fStock").value) || 0;
   const payload = {
     name: document.getElementById("fName").value.trim(),
     seriesId: document.getElementById("fSeries").value || "",
@@ -863,7 +981,8 @@ async function saveItem() {
     giftEligible: document.getElementById("fGiftEligible").checked,
     priceCandy,
     priceCash,
-    stock: Number(document.getElementById("fStock").value) || 0,
+    stock,
+    colorVariants,
     stockByAlt: getAltStockFromForm(),
     image: document.getElementById("fImage").value.trim(),
     description: document.getElementById("fDesc").value.trim(),
@@ -950,7 +1069,8 @@ async function loadOrders() {
               .map((r) => `${escapeHtml(r.alt)}：${Number(r.qty) || 0}`)
               .join("\n")}">🧍${altList.length}</span>`
           : "";
-        return `${i.name} x${i.qty}${altHint}`;
+        const colorText = i.color ? `（${escapeHtml(i.color)}）` : "";
+        return `${i.name}${colorText} x${i.qty}${altHint}`;
       })
       .join("、");
     const icon = o.paymentMethod === "糖果" ? "🍬" : "💵";
@@ -1006,14 +1126,41 @@ function renderOrderStats(orders) {
 // 因為後台通常只有妳自己在操作，不太會同時有兩個人一起改庫存，用簡單的方式就夠了。
 async function adjustStockForOrder(order, sign) {
   const items = order.items || [];
+  // 同一個商品在同一筆訂單裡可能出現不只一次（例如同時買了兩個不同顏色），
+  // 先照商品 id 分組，每個商品只讀一次、只寫一次。
+  const byId = {};
+  items.forEach((i) => {
+    if (!byId[i.id]) byId[i.id] = [];
+    byId[i.id].push(i);
+  });
   await Promise.all(
-    items.map(async (i) => {
-      const itemRef = doc(db, "items", i.id);
+    Object.entries(byId).map(async ([id, lines]) => {
+      const itemRef = doc(db, "items", id);
       const snap = await getDoc(itemRef);
       if (!snap.exists()) return; // 商品可能已經被刪除了，跳過
-      const currentStock = snap.data().stock || 0;
-      const newStock = Math.max(0, currentStock + sign * i.qty);
-      await updateDoc(itemRef, { stock: newStock });
+      const item = snap.data();
+      if (Array.isArray(item.colorVariants) && item.colorVariants.length > 0) {
+        let unmatchedQty = 0;
+        const updatedVariants = item.colorVariants.map((v) => {
+          const qty = lines.filter((l) => l.color === v.color).reduce((sum, l) => sum + (l.qty || 0), 0);
+          if (!qty) return v;
+          return { ...v, stock: Math.max(0, (Number(v.stock) || 0) + sign * qty) };
+        });
+        // 舊訂單（顏色款式功能上線前下的單）沒有記錄顏色，沒辦法知道該調整哪一個顏色，
+        // 這種情況就只調整最上面「庫存」加總欄位，不動個別顏色的數字，避免亂改到不確定的資料。
+        lines.forEach((l) => {
+          const matched = item.colorVariants.some((v) => v.color === l.color);
+          if (!matched) unmatchedQty += l.qty || 0;
+        });
+        const variantTotal = updatedVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+        const newTotalStock = Math.max(0, variantTotal + sign * unmatchedQty);
+        await updateDoc(itemRef, { colorVariants: updatedVariants, stock: newTotalStock });
+      } else {
+        const totalQty = lines.reduce((sum, l) => sum + (l.qty || 0), 0);
+        const currentStock = item.stock || 0;
+        const newStock = Math.max(0, currentStock + sign * totalQty);
+        await updateDoc(itemRef, { stock: newStock });
+      }
     })
   );
 }

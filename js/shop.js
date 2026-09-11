@@ -93,6 +93,32 @@ function priceFor(item, paymentMethod) {
   return paymentMethod === "糖果" ? item.priceCandy : item.priceCash;
 }
 
+// ---------- 顏色款式（同一件商品有好幾種顏色，各自有自己的照片、庫存） ----------
+// 購物車原本是用「商品ID」當 key，有顏色款式的商品改用「商品ID::顏色」當 key，
+// 沒有顏色款式的商品完全不受影響（color 是 null/undefined 時，key 就是原本的商品ID，
+// 跟舊資料、舊的購物車紀錄完全相容）。
+function cartKey(id, color) {
+  return color ? `${id}::${color}` : id;
+}
+function parseCartKey(key) {
+  const idx = key.indexOf("::");
+  return idx === -1 ? { id: key, color: null } : { id: key.slice(0, idx), color: key.slice(idx + 2) };
+}
+function getVariant(item, color) {
+  if (!color || !Array.isArray(item.colorVariants)) return null;
+  return item.colorVariants.find((v) => v.color === color) || null;
+}
+// 這個商品「這個顏色」的庫存數字；沒有顏色款式的商品就是原本的 item.stock。
+function stockFor(item, color) {
+  const variant = getVariant(item, color);
+  return variant ? Number(variant.stock) || 0 : item.stock;
+}
+// 這個商品「這個顏色」該顯示的照片；沒選顏色、或沒有顏色款式，就用商品本來的封面照。
+function imageFor(item, color) {
+  const variant = getVariant(item, color);
+  return (variant && variant.image) || item.image;
+}
+
 function formatPrice(paymentMethod, amount) {
   return paymentMethod === "糖果" ? `🍬 ${amount} 糖果` : `💵 NT$ ${amount}`;
 }
@@ -459,8 +485,10 @@ function renderPagination(totalItems) {
 }
 
 // 已售完是庫存歸零時自動判斷，不用後台手動標記。
-function isOutOfStock(item) {
-  return item.stock !== undefined && item.stock <= 0;
+// 有顏色款式的商品，要看「選到的那個顏色」庫存夠不夠，不是看商品整體的庫存加總。
+function isOutOfStock(item, color) {
+  const stock = stockFor(item, color);
+  return stock !== undefined && stock <= 0;
 }
 
 function renderGrid() {
@@ -489,28 +517,51 @@ function renderGrid() {
   pageList.forEach((item) => grid.appendChild(buildProductCard(item)));
 }
 
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 // 商品卡片（全部家具的格子、贈品專區都共用這份）。
 // isGift 為 true 時（贈品專區）：卡片上顯示「🎁 贈品」而不是價格，按鈕是「加入贈品」，
 // 加進去的東西會放進 GIFT_CART（跟平常購買的 CART 分開），結帳時這筆不算錢。
+// 有顏色款式的商品，卡片上會多一排顏色選項，買家點了哪個顏色，圖片、庫存、能不能加入購物車
+// 都會跟著換成那個顏色的資料；預設先選第一個顏色，不用逼買家一定要先點一下才能買。
 function buildProductCard(item, { extraClass, isGift } = {}) {
   const card = document.createElement("div");
   card.className = extraClass ? `card ${extraClass}` : "card";
-  const outOfStock = isOutOfStock(item);
+
+  const hasVariants = Array.isArray(item.colorVariants) && item.colorVariants.length > 0;
+  let selectedColor = hasVariants ? item.colorVariants[0].color : null;
+  const outOfStock = isOutOfStock(item, selectedColor);
 
   card.innerHTML = `
     <div class="card-img-wrap">
-      <img src="${item.image}" alt="${item.name}" class="${outOfStock ? "img-soldout" : ""}" />
+      <img src="${imageFor(item, selectedColor)}" alt="${escapeHtml(item.name)}" class="${outOfStock ? "img-soldout" : ""}" />
       ${item.isNew ? '<div class="ribbon-new">NEW</div>' : ""}
-      ${outOfStock ? '<div class="stamp-soldout">已售完</div>' : ""}
+      <div class="stamp-soldout" style="${outOfStock ? "" : "display:none;"}">已售完</div>
     </div>
     <div class="body">
       <div class="cat">${item.category}</div>
       ${Array.isArray(item.tags) && item.tags.length ? `<div class="item-tags">${item.tags.map(t=>`<span>${t}</span>`).join("")}</div>` : ""}
       <h3>${item.name}</h3>
       <div class="desc">${item.description || ""}</div>
+      ${
+        hasVariants
+          ? `<div class="color-swatches">${item.colorVariants
+              .map((v, i) => {
+                const colorOut = (Number(v.stock) || 0) <= 0;
+                return `<button type="button" class="color-swatch${i === 0 ? " active" : ""}${colorOut ? " out" : ""}" data-color="${escapeHtml(v.color)}">${escapeHtml(v.color)}${colorOut ? "（已售完）" : ""}</button>`;
+              })
+              .join("")}</div>`
+          : ""
+      }
       <div class="price-row">
         <span class="price${isGift ? " gift-price" : ""}">${isGift ? "🎁 贈品（免費）" : formatPrice(PAYMENT_METHOD, priceFor(item, PAYMENT_METHOD))}</span>
-        <span class="stock">${outOfStock ? "已售完" : "庫存 " + item.stock}</span>
+        <span class="stock">${outOfStock ? "已售完" : "庫存 " + stockFor(item, selectedColor)}</span>
       </div>
       <button class="add-btn" ${outOfStock ? "disabled" : ""}>${isGift ? "加入贈品" : "加入購物車"}</button>
     </div>
@@ -522,7 +573,32 @@ function buildProductCard(item, { extraClass, isGift } = {}) {
     imgEl.src = PLACEHOLDER_IMG;
   };
 
-  card.querySelector(".add-btn").onclick = () => (isGift ? addGiftToCart(item.id) : addToCart(item.id));
+  const addBtn = card.querySelector(".add-btn");
+  const stockEl = card.querySelector(".stock");
+  const soldoutStamp = card.querySelector(".stamp-soldout");
+
+  function refreshForColor() {
+    const nowOut = isOutOfStock(item, selectedColor);
+    imgEl.src = imageFor(item, selectedColor);
+    imgEl.classList.toggle("img-soldout", nowOut);
+    if (soldoutStamp) soldoutStamp.style.display = nowOut ? "" : "none";
+    if (stockEl) stockEl.textContent = nowOut ? "已售完" : "庫存 " + stockFor(item, selectedColor);
+    addBtn.disabled = nowOut;
+    card.querySelectorAll(".color-swatch").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.color === selectedColor);
+    });
+  }
+
+  if (hasVariants) {
+    card.querySelectorAll(".color-swatch").forEach((btn) => {
+      btn.onclick = () => {
+        selectedColor = btn.dataset.color;
+        refreshForColor();
+      };
+    });
+  }
+
+  addBtn.onclick = () => (isGift ? addGiftToCart(item.id, selectedColor) : addToCart(item.id, selectedColor));
   return card;
 }
 
@@ -557,57 +633,65 @@ function renderGiftSection() {
   if (moreBtn) moreBtn.style.display = giftItems.length > GIFT_PREVIEW_COUNT ? "block" : "none";
 }
 
-// 同一件商品可能同時放在「一般購物車」跟「贈品購物車」，兩邊要合併看庫存，
+// 同一件商品（同一個顏色）可能同時放在「一般購物車」跟「贈品購物車」，兩邊要合併看庫存，
 // 不能各自加到滿，加起來卻超過庫存（結帳時就是這樣合併檢查的，這裡先在畫面上擋掉）。
-function combinedCartQty(id) {
-  return (CART[id] || 0) + (GIFT_CART[id] || 0);
+// 有顏色款式時，是分開算每個顏色自己的庫存，不是看商品整體。
+function combinedCartQty(id, color) {
+  const key = cartKey(id, color);
+  return (CART[key] || 0) + (GIFT_CART[key] || 0);
 }
 
-function showCartLimitMsg(item) {
+function showCartLimitMsg(item, color, stock) {
   const msgBox = document.getElementById("msgBox");
   if (msgBox) {
-    msgBox.innerHTML = `<div class="msg error">「${item.name}」庫存只剩 ${item.stock} 件，不能再加入更多囉</div>`;
+    msgBox.innerHTML = `<div class="msg error">「${item.name}${color ? `（${color}）` : ""}」庫存只剩 ${stock} 件，不能再加入更多囉</div>`;
   }
 }
 
-function atStockLimit(id) {
+function atStockLimit(id, color) {
   const item = ITEMS.find((i) => i.id === id);
-  if (!item || item.stock === undefined) return false;
-  if (combinedCartQty(id) >= item.stock) {
-    showCartLimitMsg(item);
+  if (!item) return false;
+  const stock = stockFor(item, color);
+  if (stock === undefined) return false;
+  if (combinedCartQty(id, color) >= stock) {
+    showCartLimitMsg(item, color, stock);
     return true;
   }
   return false;
 }
 
-function addToCart(id) {
-  if (atStockLimit(id)) return;
-  CART[id] = (CART[id] || 0) + 1;
+function addToCart(id, color) {
+  if (atStockLimit(id, color)) return;
+  const key = cartKey(id, color);
+  CART[key] = (CART[key] || 0) + 1;
   saveCart();
   renderCart();
 }
 
-function changeQty(id, delta) {
-  if (!CART[id]) return;
-  if (delta > 0 && atStockLimit(id)) return;
-  CART[id] += delta;
-  if (CART[id] <= 0) delete CART[id];
+function changeQty(id, delta, color) {
+  const key = cartKey(id, color);
+  if (!CART[key]) return;
+  if (delta > 0 && atStockLimit(id, color)) return;
+  CART[key] += delta;
+  if (CART[key] <= 0) delete CART[key];
   saveCart();
   renderCart();
 }
 
-function addGiftToCart(id) {
-  if (atStockLimit(id)) return;
-  GIFT_CART[id] = (GIFT_CART[id] || 0) + 1;
+function addGiftToCart(id, color) {
+  if (atStockLimit(id, color)) return;
+  const key = cartKey(id, color);
+  GIFT_CART[key] = (GIFT_CART[key] || 0) + 1;
   saveGiftCart();
   renderCart();
 }
 
-function changeGiftQty(id, delta) {
-  if (!GIFT_CART[id]) return;
-  if (delta > 0 && atStockLimit(id)) return;
-  GIFT_CART[id] += delta;
-  if (GIFT_CART[id] <= 0) delete GIFT_CART[id];
+function changeGiftQty(id, delta, color) {
+  const key = cartKey(id, color);
+  if (!GIFT_CART[key]) return;
+  if (delta > 0 && atStockLimit(id, color)) return;
+  GIFT_CART[key] += delta;
+  if (GIFT_CART[key] <= 0) delete GIFT_CART[key];
   saveGiftCart();
   renderCart();
 }
@@ -655,11 +739,12 @@ function renderCart() {
 
   let total = 0;
   linesEl.innerHTML = "";
-  ids.forEach((id) => {
+  ids.forEach((key) => {
+    const { id, color } = parseCartKey(key);
     const item = ITEMS.find((i) => i.id === id);
     if (!item) return;
 
-    const qty = CART[id];
+    const qty = CART[key];
     const unitPrice = priceFor(item, PAYMENT_METHOD);
     const lineTotal = unitPrice * qty;
     total += lineTotal;
@@ -667,7 +752,7 @@ function renderCart() {
     const row = document.createElement("div");
     row.className = "cart-line";
     row.innerHTML = `
-      <span class="name">${item.name}</span>
+      <span class="name">${item.name}${color ? `<span class="cart-line-color">（${color}）</span>` : ""}</span>
       <div class="qty-ctrl">
         <button data-d="-1">−</button>
         <span>${qty}</span>
@@ -676,21 +761,22 @@ function renderCart() {
       <span>${PAYMENT_METHOD === "糖果" ? lineTotal : "NT$" + lineTotal}</span>
     `;
     row.querySelectorAll("button").forEach((btn) => {
-      btn.onclick = () => changeQty(id, parseInt(btn.dataset.d, 10));
+      btn.onclick = () => changeQty(id, parseInt(btn.dataset.d, 10), color);
     });
     linesEl.appendChild(row);
   });
 
   // 贈品是免費的，不會加進 total，畫面上也用「贈品」字樣跟「免費」跟一般購買的商品分開顯示
-  giftIds.forEach((id) => {
+  giftIds.forEach((key) => {
+    const { id, color } = parseCartKey(key);
     const item = ITEMS.find((i) => i.id === id);
     if (!item) return;
 
-    const qty = GIFT_CART[id];
+    const qty = GIFT_CART[key];
     const row = document.createElement("div");
     row.className = "cart-line cart-line-gift";
     row.innerHTML = `
-      <span class="name">🎁 ${item.name}<span class="gift-tag">贈品</span></span>
+      <span class="name">🎁 ${item.name}${color ? `<span class="cart-line-color">（${color}）</span>` : ""}<span class="gift-tag">贈品</span></span>
       <div class="qty-ctrl">
         <button data-d="-1">−</button>
         <span>${qty}</span>
@@ -699,7 +785,7 @@ function renderCart() {
       <span class="gift-free">免費</span>
     `;
     row.querySelectorAll("button").forEach((btn) => {
-      btn.onclick = () => changeGiftQty(id, parseInt(btn.dataset.d, 10));
+      btn.onclick = () => changeGiftQty(id, parseInt(btn.dataset.d, 10), color);
     });
     linesEl.appendChild(row);
   });
@@ -725,8 +811,8 @@ async function checkout() {
     return;
   }
 
-  const cartEntries = Object.entries(CART); // 正常購買 [ [id, qty], ... ]
-  const giftEntries = Object.entries(GIFT_CART); // 免費贈品 [ [id, qty], ... ]
+  const cartEntries = Object.entries(CART); // 正常購買 [ [cartKey, qty], ... ]　cartKey 可能是純 id，也可能是「id::顏色」
+  const giftEntries = Object.entries(GIFT_CART); // 免費贈品 [ [cartKey, qty], ... ]
   if (cartEntries.length === 0 && giftEntries.length === 0) return;
   if (cartEntries.length === 0 && giftEntries.length > 0) {
     msgBox.innerHTML = '<div class="msg error">贈品要搭配購買商品才能兌換，請先加入至少一件商品</div>';
@@ -739,18 +825,21 @@ async function checkout() {
   try {
     const result = await runTransaction(db, async (tx) => {
       const allEntries = [
-        ...cartEntries.map(([id, qty]) => ({ id, qty, isGift: false })),
-        ...giftEntries.map(([id, qty]) => ({ id, qty, isGift: true })),
+        ...cartEntries.map(([key, qty]) => ({ key, ...parseCartKey(key), qty, isGift: false })),
+        ...giftEntries.map(([key, qty]) => ({ key, ...parseCartKey(key), qty, isGift: true })),
       ];
 
-      // 同一件商品有可能同時被正常購買、又被選成贈品：庫存要合併算一次，不能分開各扣各的。
+      // 同一件商品（不分顏色）有可能同時被正常購買、又被選成贈品，但只需要照 id 讀一次商品資料就好。
       const uniqueIds = [...new Set(allEntries.map((e) => e.id))];
       const uniqueSnaps = await Promise.all(uniqueIds.map((id) => tx.get(doc(db, "items", id))));
       const snapById = {};
       uniqueIds.forEach((id, i) => { snapById[id] = uniqueSnaps[i]; });
 
       const orderItems = [];
-      const combinedQtyById = {};
+      // 庫存要用「商品＋顏色」合併算一次（用 cartKey 當 key），不能分開各扣各的：
+      // 同一顏色如果同時出現在購物車跟贈品區，要合併檢查同一顏色的庫存上限。
+      // 沒有顏色款式的商品，cartKey 就等於純 id，所以這一套邏輯跟原本沒有顏色款式的商品完全相容。
+      const combinedQtyByKey = {};
       let total = 0;
 
       allEntries.forEach((entry) => {
@@ -759,14 +848,26 @@ async function checkout() {
           throw new Error(`商品不存在或已下架`);
         }
         const item = snap.data();
-        combinedQtyById[entry.id] = (combinedQtyById[entry.id] || 0) + entry.qty;
-        if (item.stock !== undefined && combinedQtyById[entry.id] > item.stock) {
-          throw new Error(`「${item.name}」庫存不足`);
+        if (entry.color && !getVariant(item, entry.color)) {
+          throw new Error(`「${item.name}」的顏色款式已異動，請重新整理頁面後再試一次`);
+        }
+        combinedQtyByKey[entry.key] = (combinedQtyByKey[entry.key] || 0) + entry.qty;
+        const availableStock = stockFor(item, entry.color);
+        if (availableStock !== undefined && combinedQtyByKey[entry.key] > availableStock) {
+          throw new Error(`「${item.name}${entry.color ? `（${entry.color}）` : ""}」庫存不足`);
         }
         const unitPrice = entry.isGift ? 0 : PAYMENT_METHOD === "糖果" ? item.priceCandy : item.priceCash;
         const lineTotal = unitPrice * entry.qty;
         total += lineTotal;
-        orderItems.push({ id: entry.id, name: item.name, price: unitPrice, qty: entry.qty, image: item.image, isGift: entry.isGift });
+        orderItems.push({
+          id: entry.id,
+          name: item.name,
+          color: entry.color || null,
+          price: unitPrice,
+          qty: entry.qty,
+          image: imageFor(item, entry.color),
+          isGift: entry.isGift,
+        });
       });
 
       const orderRef = doc(collection(db, "orders"));
@@ -782,10 +883,25 @@ async function checkout() {
         status: "待確認",
       });
 
+      // 同一件商品可能同時扣好幾個顏色的庫存，但 Firestore transaction 對同一份文件多次 tx.update()
+      // 只有最後一次會生效（不會自動合併），所以這裡把每個商品要扣的所有顏色都先合併算好，
+      // 每個商品最後只呼叫一次 tx.update()。
       uniqueIds.forEach((id) => {
         const snap = snapById[id];
-        const newStock = Math.max(0, (snap.data().stock || 0) - (combinedQtyById[id] || 0));
-        tx.update(doc(db, "items", id), { stock: newStock });
+        const item = snap.data();
+        if (Array.isArray(item.colorVariants) && item.colorVariants.length > 0) {
+          const updatedVariants = item.colorVariants.map((v) => {
+            const qtyBought = combinedQtyByKey[cartKey(id, v.color)] || 0;
+            return { ...v, stock: Math.max(0, (Number(v.stock) || 0) - qtyBought) };
+          });
+          // 上面的「庫存」欄位永遠自動等於所有顏色庫存加總，維持跟舊資料/後台顯示一致。
+          const newTotalStock = updatedVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+          tx.update(doc(db, "items", id), { colorVariants: updatedVariants, stock: newTotalStock });
+        } else {
+          const qtyBought = combinedQtyByKey[id] || 0;
+          const newStock = Math.max(0, (item.stock || 0) - qtyBought);
+          tx.update(doc(db, "items", id), { stock: newStock });
+        }
       });
 
       return { id: orderRef.id, total, paymentMethod: PAYMENT_METHOD, items: orderItems };
@@ -818,7 +934,7 @@ function showOrderSummary({ id, total, paymentMethod, items, buyerName, contact,
       return `
         <div class="order-summary-item${i.isGift ? " order-summary-item-gift" : ""}">
           <img src="${thumbSrc}" data-original="${i.image || ""}" alt="${i.name}" class="order-summary-thumb" />
-          <span class="order-summary-item-name">${i.name} x${i.qty}${i.isGift ? '<span class="gift-tag">贈品</span>' : ""}</span>
+          <span class="order-summary-item-name">${i.name}${i.color ? `（${i.color}）` : ""} x${i.qty}${i.isGift ? '<span class="gift-tag">贈品</span>' : ""}</span>
           <span class="order-summary-item-price">${lineText}</span>
         </div>`;
     })
