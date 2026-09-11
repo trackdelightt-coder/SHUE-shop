@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>蘇蘇家具商店 - 後台管理</title>
-<link rel="stylesheet" href="css/style.css?v=911-20260911-1" />
+<link rel="stylesheet" href="css/style.css?v=911-20260911-2" />
 </head>
 <body>
   <header class="topbar">
@@ -70,6 +70,14 @@
         <div>
           <label>庫存</label>
           <input id="fStock" type="number" placeholder="例：20" />
+          <div id="fStockAutoHint"></div>
+        </div>
+        <div class="full">
+          <label>顏色款式（選填；同一件商品如果有分不同顏色，可以在這裡新增，買家頁面會出現顏色選擇按鈕，每個顏色各自獨立算庫存、也可以各自放自己的照片（沒放的話會用最上面的商品照片）。只要有新增顏色款式，上面的「庫存」欄位就會自動鎖定＝所有顏色庫存加總，不用也不能再手動改）</label>
+          <div id="colorVariantRows" class="color-variant-rows"></div>
+          <div class="color-variant-footer">
+            <button type="button" id="addColorVariantRowBtn" class="secondary-btn">＋ 新增顏色</button>
+          </div>
         </div>
         <div class="full">
           <label>分身庫存明細（選填，記錄這件商品目前分散在哪些分身身上，方便妳知道要去哪個分身出貨。加總數字僅供對照，不會自動改變上面的「庫存」欄位）</label>
@@ -212,6 +220,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/admin.js?v=911-20260911-1"></script>
+  <script type="module" src="js/admin.js?v=911-20260911-2"></script>
 </body>
 </html>
