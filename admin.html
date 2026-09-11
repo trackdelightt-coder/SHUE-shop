@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>蘇蘇家具商店 - 後台管理</title>
-<link rel="stylesheet" href="css/style.css?v=829-20260829-1" />
+<link rel="stylesheet" href="css/style.css?v=911-20260911-1" />
 </head>
 <body>
   <header class="topbar">
@@ -36,8 +36,9 @@
       <div class="form-grid" id="itemForm">
         <input type="hidden" id="itemId" />
         <div>
-          <label>商品名稱</label>
+          <label>商品名稱（如果上傳的照片上有名稱字樣，會自動幫妳掃出來填在這裡；掃到不準的話直接手動改掉就好）</label>
           <input id="fName" placeholder="例：北歐風雙人沙發" />
+          <div id="nameOcrHint" class="name-ocr-hint"></div>
         </div>
         <div>
           <label>分類（如需新增/刪除分類選項，請到下方「分類與標籤管理」）</label>
@@ -211,6 +212,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/admin.js?v=829-20260829-1"></script>
+  <script type="module" src="js/admin.js?v=911-20260911-1"></script>
 </body>
 </html>
