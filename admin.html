@@ -71,6 +71,14 @@
           <input id="fStock" type="number" placeholder="例：20" />
         </div>
         <div class="full">
+          <label>分身庫存明細（選填，記錄這件商品目前分散在哪些分身身上，方便妳知道要去哪個分身出貨。加總數字僅供對照，不會自動改變上面的「庫存」欄位）</label>
+          <div id="altStockRows" class="alt-stock-rows"></div>
+          <div class="alt-stock-footer">
+            <button type="button" id="addAltStockRowBtn" class="secondary-btn">＋ 新增分身</button>
+            <span id="altStockTotal" class="alt-stock-total"></span>
+          </div>
+        </div>
+        <div class="full">
           <label>圖片網址（Google 雲端硬碟的話，只要把「你的檔案ID」換成你自己的那段文字就好）</label>
           <input id="fImage" placeholder="https://..." value="https://drive.google.com/thumbnail?id=你的檔案ID&sz=w1000" />
         </div>
