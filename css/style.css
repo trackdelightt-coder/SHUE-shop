@@ -1084,6 +1084,8 @@ tr:hover td { background: rgba(255,255,255,.018); }
 .image-upload-status { font-size: 13px; color: var(--muted); }
 .image-upload-status.error { color: var(--danger); }
 .image-upload-status.success { color: var(--teal); }
+.name-ocr-hint { font-size: 12px; color: var(--muted); margin-top: 4px; min-height: 16px; }
+.name-ocr-hint.success { color: var(--teal); }
 .image-preview {
   display: block;
   margin-top: 10px;
