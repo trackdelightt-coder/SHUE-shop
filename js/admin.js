@@ -24,6 +24,19 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// ---------- 商品照片直接上傳（Firebase Storage） ----------
+// 用「動態載入」包 try/catch，是因為這個功能不是後台能不能用的必要條件——
+// 就算哪天網路不穩、或 Storage 服務一時載入失敗，也只是「上傳照片」這個按鈕不能用而已，
+// 不應該連帶讓整個後台（商品列表、編輯、存檔）都壞掉。
+let storageModule = null;
+let storageInstance = null;
+async function getStorageModule() {
+  if (storageModule) return storageModule;
+  storageModule = await import("https://www.gstatic.com/firebasejs/12.17.1/firebase-storage.js");
+  storageInstance = storageModule.getStorage(app);
+  return storageModule;
+}
+
 // 把文字裡的特殊符號轉成安全的顯示方式，避免分身名稱裡不小心打到 < > " 這些符號時，
 // 把後台表格的排版弄壞掉。
 function escapeHtml(str) {
@@ -679,6 +692,52 @@ document.getElementById("addAltStockRowBtn")?.addEventListener("click", () => {
 });
 document.getElementById("fStock")?.addEventListener("input", updateAltStockTotal);
 
+function showImagePreview(url) {
+  const preview = document.getElementById("imagePreview");
+  if (!preview) return;
+  if (url) {
+    preview.src = url;
+    preview.style.display = "block";
+  } else {
+    preview.style.display = "none";
+    preview.src = "";
+  }
+}
+
+document.getElementById("fImageFile")?.addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  const statusEl = document.getElementById("imageUploadStatus");
+  if (!file) return;
+  if (!statusEl) return;
+  statusEl.textContent = "上傳中...";
+  statusEl.className = "image-upload-status";
+  try {
+    const { ref, uploadBytes, getDownloadURL } = await getStorageModule();
+    // 檔名前面加時間戳記，避免兩張照片剛好同名互相蓋掉
+    const path = `items/${Date.now()}_${file.name}`;
+    const fileRef = ref(storageInstance, path);
+    await uploadBytes(fileRef, file);
+    const url = await getDownloadURL(fileRef);
+    document.getElementById("fImage").value = url;
+    showImagePreview(url);
+    statusEl.textContent = "✅ 上傳完成，網址已經自動填好了";
+    statusEl.className = "image-upload-status success";
+  } catch (err) {
+    console.error("[Storage] 照片上傳失敗:", err);
+    statusEl.textContent =
+      "❌ 上傳失敗，可能是 Firebase Storage 還沒開通或設定權限的問題，可以先改用手動貼網址的方式，或是把這個錯誤截圖起來問問幫妳架站的人：" +
+      (err && err.message ? err.message : String(err));
+    statusEl.className = "image-upload-status error";
+  } finally {
+    e.target.value = "";
+  }
+});
+
+// 手動改網址欄位時，也順便更新一下預覽圖（例如她自己貼了新的網址進去）
+document.getElementById("fImage")?.addEventListener("change", (e) => {
+  showImagePreview(e.target.value.trim());
+});
+
 function fillForm(item) {
   document.getElementById("itemId").value = item.id;
   document.getElementById("fName").value = item.name;
@@ -706,6 +765,9 @@ function fillForm(item) {
   document.getElementById("fGiftEligible").checked = item.giftEligible === true;
   renderTagPicker(Array.isArray(item.tags) ? item.tags : []);
   renderAltStockRows(Array.isArray(item.stockByAlt) ? item.stockByAlt : []);
+  showImagePreview(item.image);
+  const statusEl = document.getElementById("imageUploadStatus");
+  if (statusEl) { statusEl.textContent = ""; statusEl.className = "image-upload-status"; }
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -721,6 +783,9 @@ function clearForm() {
   document.getElementById("fGiftEligible").checked = false;
   renderTagPicker([]);
   renderAltStockRows([]);
+  showImagePreview("");
+  const statusEl = document.getElementById("imageUploadStatus");
+  if (statusEl) { statusEl.textContent = ""; statusEl.className = "image-upload-status"; }
   populateSeriesSelect("");
   const categorySelect = document.getElementById("fCategory");
   categorySelect.querySelectorAll("option[data-legacy]").forEach((o) => o.remove());
