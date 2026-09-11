@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>蘇蘇家具商店 - 後台管理</title>
-<link rel="stylesheet" href="css/style.css?v=911-20260911-4" />
+<link rel="stylesheet" href="css/style.css?v=911-20260911-7" />
 </head>
 <body>
   <header class="topbar">
@@ -199,6 +199,18 @@
     <div id="settingsPanel" style="display:none;">
       <div class="form-grid" style="grid-template-columns: 1fr;">
         <div>
+          <label>首圖標題（買家頁面最上方首圖的大標題；留空就會用預設文案，按 Enter 可以換行）</label>
+          <textarea id="fHeroTitle" rows="2" placeholder="把你的角色小屋&#10;佈置得更有質感"></textarea>
+        </div>
+        <div>
+          <label>首圖副標題（首圖標題下面的說明文字；留空就會用預設文案）</label>
+          <textarea id="fHeroSub" rows="2" placeholder="精選 MSTAR 遊戲家具，糖果／現金彈性付款，下單即時同步庫存，讓每一次佈置都安心又划算。"></textarea>
+        </div>
+        <div>
+          <label>首圖重點列（按鈕下面那排小字；一行一項，中間會自動加分隔線；留空就會用預設三項）</label>
+          <textarea id="fHeroTrust" rows="3" placeholder="🍬 糖果／💵 現金皆可付款&#10;📦 庫存即時更新，不怕買到已售完&#10;💬 Discord 一對一聯繫"></textarea>
+        </div>
+        <div>
           <label>商店公告（會顯示在買家頁面最上方，例如營業時間、交易比例、注意事項）</label>
           <textarea id="fAnnouncement" rows="6" placeholder="例：&#10;📢 營業時間：每天 20:00-24:00&#10;💰 交易方式：可糖可T，比值1:1&#10;💬 有問題歡迎 Discord 聯繫我們"></textarea>
         </div>
@@ -220,6 +232,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/admin.js?v=911-20260911-5"></script>
+  <script type="module" src="js/admin.js?v=911-20260911-7"></script>
 </body>
 </html>
