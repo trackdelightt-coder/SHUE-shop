@@ -535,7 +535,12 @@ function buildProductCard(item, { extraClass, isGift } = {}) {
   card.className = extraClass ? `card ${extraClass}` : "card";
 
   const hasVariants = Array.isArray(item.colorVariants) && item.colorVariants.length > 0;
-  let selectedColor = hasVariants ? item.colorVariants[0].color : null;
+  // 預設要選「還有庫存的」第一個顏色，不要讓買家一打開商品就看到已經賣完的顏色；
+  // 如果每個顏色都賣完了，才退回選款式列表裡的第一個（反正怎麼選都是已售完）。
+  const firstInStockVariant = hasVariants
+    ? item.colorVariants.find((v) => (Number(v.stock) || 0) > 0)
+    : null;
+  let selectedColor = hasVariants ? (firstInStockVariant || item.colorVariants[0]).color : null;
   const outOfStock = isOutOfStock(item, selectedColor);
 
   card.innerHTML = `
@@ -552,9 +557,9 @@ function buildProductCard(item, { extraClass, isGift } = {}) {
       ${
         hasVariants
           ? `<div class="color-swatches">${item.colorVariants
-              .map((v, i) => {
+              .map((v) => {
                 const colorOut = (Number(v.stock) || 0) <= 0;
-                return `<button type="button" class="color-swatch${i === 0 ? " active" : ""}${colorOut ? " out" : ""}" data-color="${escapeHtml(v.color)}">${escapeHtml(v.color)}${colorOut ? "（已售完）" : ""}</button>`;
+                return `<button type="button" class="color-swatch${v.color === selectedColor ? " active" : ""}${colorOut ? " out" : ""}" data-color="${escapeHtml(v.color)}">${escapeHtml(v.color)}${colorOut ? "（已售完）" : ""}</button>`;
               })
               .join("")}</div>`
           : ""

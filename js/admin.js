@@ -37,6 +37,58 @@ async function getStorageModule() {
   return storageModule;
 }
 
+// ---------- 上傳照片前，先把「不是標準網頁格式」的照片轉成 JPG ----------
+// 手機（尤其 iPhone）相簿預設存的是 HEIC 格式：iPhone 自己的瀏覽器看得懂，所以在後台預覽、
+// 在買家頁面用 iPhone 看都正常，但 Android、大部分電腦瀏覽器都讀不懂 HEIC，會整張變成破圖；
+// 「截圖並複製」用的工具也一樣讀不懂，會變成一塊黑色。
+// 這裡上傳前先在瀏覽器裡（用 canvas）把照片重新存成 JPG 再傳到 Firebase，這樣不管買家用什麼
+// 手機、什麼瀏覽器看，都看得到照片。已經是標準格式（JPG/PNG/WEBP/GIF）的話就不用多轉一手，
+// 直接照原始檔案上傳；如果瀏覽器沒辦法讀取原始格式（轉檔失敗），就照原始檔案上傳，不會卡住整個流程。
+const WEB_SAFE_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+function normalizeImageFile(file) {
+  if (WEB_SAFE_IMAGE_TYPES.includes(file.type)) return Promise.resolve(file);
+  return new Promise((resolve) => {
+    let objectUrl;
+    try {
+      objectUrl = URL.createObjectURL(file);
+    } catch (err) {
+      resolve(file);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob(
+          (blob) => {
+            URL.revokeObjectURL(objectUrl);
+            if (blob) {
+              const newName = file.name.replace(/\.[^.]+$/, "") + ".jpg";
+              resolve(new File([blob], newName, { type: "image/jpeg" }));
+            } else {
+              resolve(file);
+            }
+          },
+          "image/jpeg",
+          0.92
+        );
+      } catch (err) {
+        URL.revokeObjectURL(objectUrl);
+        resolve(file);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file); // 這個瀏覽器沒辦法讀取這個格式，就照原始檔案上傳，總比整個失敗好
+    };
+    img.src = objectUrl;
+  });
+}
+
 // 把文字裡的特殊符號轉成安全的顯示方式，避免分身名稱裡不小心打到 < > " 這些符號時，
 // 把後台表格的排版弄壞掉。
 function escapeHtml(str) {
@@ -719,8 +771,8 @@ function addColorVariantRow(color = "", image = "", stock = "") {
     <input type="text" class="cv-color" placeholder="顏色名稱（例：藍色）" value="${color}" />
     <div class="cv-image-col">
       <input type="file" class="cv-image-file" accept="image/*" />
-      <input type="hidden" class="cv-image-url" value="${image}" />
       <img class="cv-image-preview" style="${image ? "" : "display:none;"}" src="${image}" />
+      <input type="text" class="cv-image-url" value="${image}" readonly placeholder="上傳後這裡會自動出現網址" title="這個顏色的照片網址，可以點進來複製" />
       <span class="cv-image-status"></span>
     </div>
     <input type="number" class="cv-stock" placeholder="庫存" value="${stock}" min="0" />
@@ -748,10 +800,11 @@ async function uploadColorVariantImage(file, row) {
   const previewImg = row.querySelector(".cv-image-preview");
   if (statusEl) { statusEl.textContent = "上傳中..."; statusEl.className = "cv-image-status"; }
   try {
+    const uploadFile = await normalizeImageFile(file);
     const { ref, uploadBytes, getDownloadURL } = await getStorageModule();
-    const path = `items/${Date.now()}_${file.name}`;
+    const path = `items/${Date.now()}_${uploadFile.name}`;
     const fileRef = ref(storageInstance, path);
-    await uploadBytes(fileRef, file);
+    await uploadBytes(fileRef, uploadFile);
     const url = await getDownloadURL(fileRef);
     if (urlInput) urlInput.value = url;
     if (previewImg) { previewImg.src = url; previewImg.style.display = "block"; }
@@ -830,11 +883,12 @@ async function uploadImageFile(file) {
   statusEl.textContent = "上傳中...";
   statusEl.className = "image-upload-status";
   try {
+    const uploadFile = await normalizeImageFile(file);
     const { ref, uploadBytes, getDownloadURL } = await getStorageModule();
     // 檔名前面加時間戳記，避免兩張照片剛好同名互相蓋掉
-    const path = `items/${Date.now()}_${file.name}`;
+    const path = `items/${Date.now()}_${uploadFile.name}`;
     const fileRef = ref(storageInstance, path);
-    await uploadBytes(fileRef, file);
+    await uploadBytes(fileRef, uploadFile);
     const url = await getDownloadURL(fileRef);
     document.getElementById("fImage").value = url;
     showImagePreview(url);
