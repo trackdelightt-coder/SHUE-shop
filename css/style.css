@@ -1027,6 +1027,54 @@ tr:hover td { background: rgba(255,255,255,.018); }
   padding: 0;
 }
 
+.alt-stock-rows { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.alt-stock-row { display: flex; gap: 8px; align-items: center; }
+.alt-stock-row input[type="text"] {
+  flex: 2;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #fff;
+  font-family: inherit;
+}
+.alt-stock-row input[type="number"] {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #fff;
+  font-family: inherit;
+}
+.alt-stock-row button {
+  border: none;
+  background: rgba(255, 111, 129, 0.18);
+  color: var(--danger);
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.alt-stock-footer { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.alt-stock-total { font-size: 13px; color: var(--muted); }
+.alt-stock-total.mismatch { color: var(--danger); }
+.alt-stock-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: help;
+  white-space: nowrap;
+}
+
 .tag-picker {
   display: flex;
   flex-wrap: wrap;
