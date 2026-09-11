@@ -1285,6 +1285,9 @@ async function deleteOrder(order) {
 async function loadSettings() {
   const snap = await getDoc(doc(db, "settings", "main"));
   const settings = snap.exists() ? snap.data() : {};
+  document.getElementById("fHeroTitle").value = settings.heroTitle || "";
+  document.getElementById("fHeroSub").value = settings.heroSub || "";
+  document.getElementById("fHeroTrust").value = settings.heroTrust || "";
   document.getElementById("fAnnouncement").value = settings.announcement || "";
   document.getElementById("fGiftSectionEnabled").checked = settings.giftSectionEnabled === true;
   document.getElementById("fGenderFemaleOnly").checked = settings.genderFemaleOnly === true;
@@ -1293,17 +1296,24 @@ async function loadSettings() {
 }
 
 async function saveSettings() {
+  const heroTitle = document.getElementById("fHeroTitle").value;
+  const heroSub = document.getElementById("fHeroSub").value;
+  const heroTrust = document.getElementById("fHeroTrust").value;
   const announcement = document.getElementById("fAnnouncement").value;
   const giftSectionEnabled = document.getElementById("fGiftSectionEnabled").checked;
   const genderFemaleOnly = document.getElementById("fGenderFemaleOnly").checked;
   const popupMessage = document.getElementById("fPopupMessage").value;
   const popupEnabled = document.getElementById("fPopupEnabled").checked;
-  await setDoc(
-    doc(db, "settings", "main"),
-    { announcement, giftSectionEnabled, genderFemaleOnly, popupMessage, popupEnabled },
-    { merge: true }
-  );
-  alert("設定已儲存！");
+  try {
+    await setDoc(
+      doc(db, "settings", "main"),
+      { heroTitle, heroSub, heroTrust, announcement, giftSectionEnabled, genderFemaleOnly, popupMessage, popupEnabled },
+      { merge: true }
+    );
+    alert("設定已儲存！");
+  } catch (err) {
+    alert("儲存失敗：" + (err && err.message ? err.message : err));
+  }
 }
 
 document.getElementById("saveSettingsBtn").onclick = (e) => {

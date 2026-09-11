@@ -358,6 +358,32 @@ let GENDER_FEMALE_ONLY = false;
 // 公告彈跳視窗目前的訊息內容（後台設定）：只在內容跟上次看過的不一樣時才會跳出來。
 let POPUP_MESSAGE = "";
 
+// 首圖標題／副標題沒有在後台填寫時使用的預設文字，跟 index.html 裡原本寫死的內容一致，
+// 這樣後台欄位留空時，畫面還是會顯示這組預設文案，不會開天窗。
+const HERO_TITLE_DEFAULT = "把你的角色小屋\n佈置得更有質感";
+const HERO_SUB_DEFAULT = "精選 MSTAR 遊戲家具，糖果／現金彈性付款，下單即時同步庫存，讓每一次佈置都安心又划算。";
+const HERO_TRUST_DEFAULT = ["🍬 糖果／💵 現金皆可付款", "📦 庫存即時更新，不怕買到已售完", "💬 Discord 一對一聯繫"];
+
+// 首圖下面那排重點列（庫存即時更新／付款方式／Discord 聯繫...）：
+// 用 createElement + textContent 一個一個組出來（不是塞 innerHTML 字串），
+// 這樣後台填的文字就算不小心貼到奇怪符號也不會被當成 HTML 語法解析，比較安全。
+function renderHeroTrustRow(items) {
+  const box = document.getElementById("heroTrustRow");
+  if (!box) return;
+  box.innerHTML = "";
+  const list = items.length ? items : HERO_TRUST_DEFAULT;
+  list.forEach((text, i) => {
+    if (i > 0) {
+      const divider = document.createElement("span");
+      divider.className = "hero-trust-divider";
+      box.appendChild(divider);
+    }
+    const item = document.createElement("span");
+    item.textContent = text;
+    box.appendChild(item);
+  });
+}
+
 async function loadAnnouncement() {
   try {
     const snap = await getDoc(doc(db, "settings", "main"));
@@ -370,6 +396,20 @@ async function loadAnnouncement() {
     } else {
       box.style.display = "none";
     }
+
+    // 首圖標題／副標題：後台有填就用後台的內容（用 textContent 塞值，配合 CSS 的
+    // white-space: pre-line 讓換行照樣生效，不會有 innerHTML 注入風險），沒填就用預設文案。
+    const heroTitleEl = document.getElementById("heroTitle");
+    const heroSubEl = document.getElementById("heroSub");
+    if (heroTitleEl) heroTitleEl.textContent = (data.heroTitle && data.heroTitle.trim()) || HERO_TITLE_DEFAULT;
+    if (heroSubEl) heroSubEl.textContent = (data.heroSub && data.heroSub.trim()) || HERO_SUB_DEFAULT;
+
+    const heroTrustLines = (data.heroTrust || "")
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    renderHeroTrustRow(heroTrustLines);
+
     GIFT_SECTION_ENABLED = data.giftSectionEnabled === true;
     renderGiftSection();
 
@@ -1115,4 +1155,7 @@ document.getElementById("popupAnnouncementClose")?.addEventListener("click", () 
 document.getElementById("backToTopBtn")?.addEventListener("click", () => window.scrollTo({top:0,behavior:"smooth"}));
 Promise.all([loadItems(), loadSeries()]);
 loadTaxonomy();
+// 先同步畫一次預設的首圖重點列，這樣就算等一下讀取後台設定失敗（例如網路問題），
+// 畫面也不會開天窗變成空白一排，一定至少看得到預設內容。
+renderHeroTrustRow([]);
 loadAnnouncement();
