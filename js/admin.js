@@ -813,7 +813,24 @@ async function loadOrders() {
   const tbody = document.getElementById("ordersTbody");
   tbody.innerHTML = "";
   orders.forEach((o) => {
-    const detail = (o.items || []).map((i) => `${i.name} x${i.qty}`).join("、");
+    // 訂單明細裡，如果這件商品目前有登記「分身庫存明細」，順便顯示一下（滑鼠移上去看），
+    // 這樣妳出貨前不用切回商品管理頁面查，直接在訂單這裡就知道要去哪個分身拿貨。
+    // 這裡抓的是「商品目前的」分身資料（即時查詢），不是下單當下的分身狀態，
+    // 因為分身庫存本來就會隨時搬動，出貨當下看最新的才有意義。
+    const detail = (o.items || [])
+      .map((i) => {
+        const currentItem = ALL_ITEMS.find((x) => x.id === i.id);
+        const altList = Array.isArray(currentItem?.stockByAlt)
+          ? currentItem.stockByAlt.filter((r) => r && r.alt)
+          : [];
+        const altHint = altList.length
+          ? ` <span class="alt-stock-hint" title="${altList
+              .map((r) => `${escapeHtml(r.alt)}：${Number(r.qty) || 0}`)
+              .join("\n")}">🧍${altList.length}</span>`
+          : "";
+        return `${i.name} x${i.qty}${altHint}`;
+      })
+      .join("、");
     const icon = o.paymentMethod === "糖果" ? "🍬" : "💵";
     const totalText = o.paymentMethod === "糖果" ? `🍬 ${o.total}` : `💵 NT$ ${o.total}`;
     const createdAtText = o.createdAt && o.createdAt.toDate ? o.createdAt.toDate().toLocaleString("zh-TW") : "";
