@@ -4,17 +4,21 @@ service cloud.firestore {
 
     // 商品：所有人都能看（買家頁面要顯示），
     // 新增/刪除/大部分修改都要先登入（Firebase Authentication）才能做，
-    // 但「只改庫存、而且庫存只能變少」這個特例開放給沒登入的買家，
+    // 但「只改庫存（可能連帶顏色款式庫存）、而且庫存只能變少」這個特例開放給沒登入的買家，
     // 這樣買家送出訂單時系統才能自動扣庫存。
+    // 注意：colorVariants 一定要放在允許清單裡——商品如果有分顏色款式，結帳時
+    // 會同時更新 stock 和 colorVariants 這兩個欄位，只允許 stock 的話，
+    // 有顏色款式的商品結帳會被規則擋下來、噴「權限不足」（913 那次事故就是漏了這個）。
     match /items/{itemId} {
       allow read: if true;
       allow create, delete: if request.auth != null;
       allow update: if request.auth != null
         || (
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock']) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'colorVariants']) &&
           request.resource.data.stock is int &&
           request.resource.data.stock >= 0 &&
-          request.resource.data.stock <= resource.data.stock
+          request.resource.data.stock <= resource.data.stock &&
+          (!('colorVariants' in resource.data) || request.resource.data.colorVariants is list)
         );
     }
 
