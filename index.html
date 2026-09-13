@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>蘇蘇家具商店</title>
-<link rel="stylesheet" href="css/style.css?v=911-20260911-8" />
+<link rel="stylesheet" href="css/style.css?v=913-20260913-2" />
 </head>
 <body>
   <header class="topbar">
@@ -35,6 +35,19 @@
   </section>
 
   <div id="announcementBox" class="announcement" style="display:none;"></div>
+
+  <section id="saleSection" class="sale-section" style="display:none;">
+    <div class="sale-section-heading"><h2>🔥 特價區</h2></div>
+    <div id="saleGrid" class="sale-grid"></div>
+  </section>
+
+  <section id="auctionSection" class="auction-section" style="display:none;">
+    <div class="auction-section-heading">
+      <h2>⚡ 競標商品</h2>
+      <div class="auction-section-note">直接在下面點「出價」即可加價競標；結標後得標者請留意賣家私訊 Discord 聯繫付款喔！</div>
+    </div>
+    <div id="auctionGrid" class="auction-grid"></div>
+  </section>
 
   <div class="layout">
     <div>
@@ -133,9 +146,14 @@
     </div>
   </div>
 
+  <div id="imageLightboxOverlay" class="image-lightbox-overlay" style="display:none;">
+    <button type="button" id="imageLightboxClose" class="image-lightbox-close" aria-label="關閉大圖">✕</button>
+    <img id="imageLightboxImg" class="image-lightbox-img" src="" alt="" />
+  </div>
+
 
   <script src="js/vendor/html2canvas.min.js?v=817-20260817-3"></script>
-  <script type="module" src="js/shop.js?v=911-20260911-8"></script>
+  <script type="module" src="js/shop.js?v=913-20260913-2"></script>
   <button type="button" id="backToTopBtn" class="back-to-top" aria-label="回到頂端">↑</button>
 
 

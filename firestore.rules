@@ -30,5 +30,47 @@ service cloud.firestore {
       allow read: if true;
       allow write: if request.auth != null;
     }
+
+    // 競標商品：所有人都能看。新增/刪除、以及大部分修改都要登入才能做，
+    // 但「買家出價」這個特例開放給沒登入的買家（跟商品扣庫存是一樣的精神）：
+    // 只能改「目前價格／目前得標人／出價次數」這幾個欄位，而且：
+    // - 競標時間還沒到（沒被下架）才能出價
+    // - 新的價格一定要「剛好」等於目前價格加一個固定的加價金額（不能亂填數字）
+    // - 出價次數一定要剛好+1
+    // - 得標人暱稱要有填、長度合理
+    // 這樣就算是完全陌生的訪客也不能亂改標題、圖片、起標價、加價金額、結標時間等其他欄位。
+    match /auctions/{auctionId} {
+      allow read: if true;
+      allow create, delete: if request.auth != null;
+      allow update: if request.auth != null
+        || (
+          resource.data.active != false &&
+          request.time < resource.data.endTime &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentPrice', 'currentBidderName', 'currentBidderContact', 'bidCount']) &&
+          request.resource.data.currentPrice is number &&
+          request.resource.data.currentPrice == resource.data.currentPrice + resource.data.bidIncrement &&
+          request.resource.data.bidCount == resource.data.bidCount + 1 &&
+          request.resource.data.currentBidderName is string &&
+          request.resource.data.currentBidderName.size() > 0 &&
+          request.resource.data.currentBidderName.size() < 60 &&
+          request.resource.data.currentBidderContact is string &&
+          request.resource.data.currentBidderContact.size() < 200
+        );
+    }
+
+    // 出價紀錄：所有人都能看（方便對照歷史出價），任何人都能「新增」一筆出價紀錄
+    // （買家出價時順便留一筆記錄），但只有登入的管理員能修改或刪除既有紀錄。
+    match /auctionBids/{bidId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        || (
+          request.resource.data.keys().hasOnly(['auctionId', 'bidderName', 'bidderContact', 'amount', 'createdAt']) &&
+          request.resource.data.auctionId is string &&
+          request.resource.data.bidderName is string &&
+          request.resource.data.bidderName.size() > 0 &&
+          request.resource.data.amount is number
+        );
+      allow update, delete: if request.auth != null;
+    }
   }
 }

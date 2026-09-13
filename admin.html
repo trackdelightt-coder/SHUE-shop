@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>蘇蘇家具商店 - 後台管理</title>
-<link rel="stylesheet" href="css/style.css?v=911-20260911-8" />
+<link rel="stylesheet" href="css/style.css?v=913-20260913-2" />
 </head>
 <body>
   <header class="topbar">
@@ -27,6 +27,7 @@
     <div class="tabs">
       <button id="tabItems" class="active">商品管理</button>
       <button id="tabSeries">幸運盒系列</button>
+      <button id="tabAuctions">競標商品</button>
       <button id="tabOrders">訂單管理</button>
       <button id="tabSettings">商店設定</button>
       <button id="logoutBtn" style="margin-left:auto;">登出</button>
@@ -73,6 +74,28 @@
           <div id="fStockAutoHint"></div>
         </div>
         <div class="full">
+          <label>特價設定（選填；四個欄位都要填，特價才會生效。設定「開始～結束」的時間區間後，時間到了就會自動變回原價、自動從買家頁面的「特價區」消失，不用手動改回來）</label>
+          <div class="sale-fields-row">
+            <div>
+              <label class="sub-label">🍬 特價／糖果</label>
+              <input id="fSalePriceCandy" type="number" placeholder="例：200" />
+            </div>
+            <div>
+              <label class="sub-label">💵 特價／現金（NT$）</label>
+              <input id="fSalePriceCash" type="number" placeholder="例：250" />
+            </div>
+            <div>
+              <label class="sub-label">開始時間</label>
+              <input id="fSaleStart" type="datetime-local" />
+            </div>
+            <div>
+              <label class="sub-label">結束時間</label>
+              <input id="fSaleEnd" type="datetime-local" />
+            </div>
+          </div>
+          <div id="saleStatusHint" class="sale-status-hint"></div>
+        </div>
+        <div class="full">
           <label>顏色款式（選填；同一件商品如果有分不同顏色，可以在這裡新增，買家頁面會出現顏色選擇按鈕，每個顏色各自獨立算庫存、也可以各自放自己的照片（沒放的話會用最上面的商品照片）。只要有新增顏色款式，上面的「庫存」欄位就會自動鎖定＝所有顏色庫存加總，不用也不能再手動改）</label>
           <div id="colorVariantRows" class="color-variant-rows"></div>
           <div class="color-variant-footer">
@@ -98,6 +121,10 @@
         <div class="full">
           <label>圖片網址（Google 雲端硬碟的話，只要把「你的檔案ID」換成你自己的那段文字就好）</label>
           <input id="fImage" placeholder="https://..." value="https://drive.google.com/thumbnail?id=你的檔案ID&sz=w1000" />
+        </div>
+        <div class="full">
+          <label>放大圖網址（選填；買家點商品照片放大看時會改顯示這張。例如上面是示意圖／範例圖，這裡可以放實際商品本人的照片。留空的話，放大看到的就是上面那張圖片）</label>
+          <input id="fZoomImage" placeholder="https://...（留空＝跟上面圖片網址一樣）" />
         </div>
         <div class="full">
           <label>商品描述</label>
@@ -177,6 +204,53 @@
       <div id="seriesAdminList" class="admin-series-list"></div>
     </div>
 
+    <div id="auctionsPanel" style="display:none;">
+      <div class="form-grid" id="auctionForm">
+        <input type="hidden" id="auctionId" />
+        <div>
+          <label>商品名稱</label>
+          <input id="aName" placeholder="例：限量款夢幻公主床" />
+        </div>
+        <div>
+          <label>幣別（用哪種方式出價收款）</label>
+          <select id="aPaymentMethod">
+            <option value="糖果">🍬 糖果</option>
+            <option value="現金">💵 現金（NT$）</option>
+          </select>
+        </div>
+        <div>
+          <label>起標價</label>
+          <input id="aStartingPrice" type="number" placeholder="例：300" />
+        </div>
+        <div>
+          <label>每次加價金額</label>
+          <input id="aBidIncrement" type="number" placeholder="例：50" />
+        </div>
+        <div class="full">
+          <label>結標時間（時間一到，買家頁面就不能再出價，妳自己私訊 Discord 聯繫得標人收款）</label>
+          <input id="aEndTime" type="datetime-local" />
+          <div id="auctionStatusHint" class="sale-status-hint"></div>
+        </div>
+        <div class="full">
+          <label>圖片網址</label>
+          <input id="aImage" placeholder="https://..." />
+        </div>
+        <div class="full">
+          <label>商品描述（選填）</label>
+          <textarea id="aDesc" rows="2"></textarea>
+        </div>
+        <button id="saveAuctionBtn" class="primary-submit">新增 / 儲存競標商品</button>
+        <button id="clearAuctionBtn" class="secondary-btn" type="button">清空表單</button>
+      </div>
+      <div class="auction-admin-note">⚠️ 提醒：買家出價是直接寫進資料庫的公開功能，出價紀錄無法事後偽造，但如果要暫停某件競標商品，把它「下架」就會立刻停止讓人出價。得標後不會自動結帳，請自行私訊得標人收款、確認出貨。</div>
+      <table>
+        <thead>
+          <tr><th>圖片</th><th>名稱</th><th>幣別</th><th>起標價</th><th>目前價格</th><th>目前得標人</th><th>出價次數</th><th>結標時間</th><th>狀態</th><th>操作</th></tr>
+        </thead>
+        <tbody id="auctionsTbody"></tbody>
+      </table>
+    </div>
+
     <div id="ordersPanel" style="display:none;">
       <div class="order-stats" id="orderStats">
         <div class="order-stat-box">
@@ -232,6 +306,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/admin.js?v=911-20260911-7"></script>
+  <script type="module" src="js/admin.js?v=913-20260913-2"></script>
 </body>
 </html>
