@@ -1263,6 +1263,19 @@ tr:hover td { background: rgba(255,255,255,.018); }
 }
 .price-sale { color: #ff8a5c; font-size: 16px; font-weight: 800; }
 
+/* 913 特價卡片上的「特價至 9/15 23:59」+「剩 X 小時」提示列，讓買家知道特價時間。
+   上下堆疊（不是左右並排），是因為商品卡片在手機上很窄，左右並排常常會被截斷、
+   看不到完整的結束時間，上下堆疊才能保證兩行文字都完整顯示。 */
+.sale-time-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: -2px 0 8px;
+  font-size: 10.5px;
+}
+.sale-end-text { color: var(--muted); }
+.sale-countdown { font-weight: 800; color: #ff8a5c; }
+
 @media (max-width: 860px) {
   .sale-section { padding: 16px 20px; }
   .sale-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
