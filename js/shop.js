@@ -634,6 +634,7 @@ function buildProductCard(item, { extraClass, isGift } = {}) {
   const outOfStock = isOutOfStock(item, selectedColor);
   // 贈品專區的商品本來就免費，不套用特價（特價/劃線價對贈品沒有意義）。
   const onSale = !isGift && isOnSale(item);
+  const saleEndDate = onSale ? new Date(item.saleEnd) : null;
 
   card.innerHTML = `
     <div class="card-img-wrap">
@@ -667,6 +668,14 @@ function buildProductCard(item, { extraClass, isGift } = {}) {
         }</span>
         <span class="stock">${outOfStock ? "已售完" : "庫存 " + stockFor(item, selectedColor)}</span>
       </div>
+      ${
+        onSale
+          ? `<div class="sale-time-row">
+              <span class="sale-end-text">特價至 ${formatSaleEndText(saleEndDate)}</span>
+              <span class="sale-countdown" data-end="${saleEndDate.toISOString()}">${formatCountdownText(saleEndDate)}</span>
+            </div>`
+          : ""
+      }
       <button class="add-btn" ${outOfStock ? "disabled" : ""}>${isGift ? "加入贈品" : "加入購物車"}</button>
     </div>
   `;
@@ -755,10 +764,12 @@ function toDateSafe(value) {
   return isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function auctionCountdownText(endDate) {
+// 通用的「剩 X 天 X 小時」倒數文字，競標商品跟特價商品共用（特價商品的截止字樣
+// 在呼叫端各自處理，這裡只負責算「還剩多少時間」這件事本身）。
+function formatCountdownText(endDate) {
   if (!endDate) return "";
   const diffMs = endDate.getTime() - Date.now();
-  if (diffMs <= 0) return "已結標";
+  if (diffMs <= 0) return "已結束";
   const totalSec = Math.floor(diffMs / 1000);
   const days = Math.floor(totalSec / 86400);
   const hours = Math.floor((totalSec % 86400) / 3600);
@@ -768,6 +779,13 @@ function auctionCountdownText(endDate) {
   if (hours > 0) return `剩 ${hours} 小時 ${mins} 分`;
   if (mins > 0) return `剩 ${mins} 分 ${secs} 秒`;
   return `剩 ${secs} 秒`;
+}
+
+// 特價卡片上顯示的「特價至 9/15 下午11:59」這種簡短日期時間文字。
+function formatSaleEndText(endDate) {
+  if (!endDate) return "";
+  // 用 24 小時制（不加「上午/下午」），在窄窄的商品卡片上比較擠得下、不用被截斷。
+  return endDate.toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 async function loadAuctions() {
@@ -849,7 +867,7 @@ function buildAuctionCard(auction) {
       </div>
       <div class="auction-meta-row">
         <span class="auction-bidder">${hasBid ? `目前得標：${escapeHtml(auction.currentBidderName || "")}` : "尚無出價"}</span>
-        ${!ended ? `<span class="auction-countdown${soonMs < 3600 * 1000 ? " ending-soon" : ""}" data-end="${endDate.toISOString()}">${auctionCountdownText(endDate)}</span>` : ""}
+        ${!ended ? `<span class="auction-countdown${soonMs < 3600 * 1000 ? " ending-soon" : ""}" data-end="${endDate.toISOString()}">${formatCountdownText(endDate)}</span>` : ""}
       </div>
       ${
         ended
@@ -905,21 +923,41 @@ function buildAuctionCard(auction) {
 
 // 只更新畫面上「剩 X 分 X 秒」的文字，不整個重畫卡片——
 // 不然買家正在輸入暱稱/聯絡方式打到一半，每秒都被清空重畫就太干擾了。
-function updateAuctionCountdowns() {
-  let anyEnded = false;
+// 競標卡片跟特價卡片的倒數都是同一個函式在處理。
+function updateCountdowns() {
+  let anyAuctionEnded = false;
   document.querySelectorAll("#auctionGrid .auction-countdown").forEach((el) => {
     const iso = el.dataset.end;
     if (!iso) return;
     const endDate = new Date(iso);
     if (Date.now() >= endDate.getTime()) {
-      anyEnded = true;
+      anyAuctionEnded = true;
       return;
     }
-    el.textContent = auctionCountdownText(endDate);
+    el.textContent = formatCountdownText(endDate);
     el.classList.toggle("ending-soon", endDate.getTime() - Date.now() < 3600 * 1000);
   });
   // 有競標剛好倒數到 0，重新讀一次資料庫，把卡片換成「已結標」狀態、關閉出價按鈕。
-  if (anyEnded) loadAuctions();
+  if (anyAuctionEnded) loadAuctions();
+
+  let anySaleEnded = false;
+  document.querySelectorAll(".sale-countdown").forEach((el) => {
+    const iso = el.dataset.end;
+    if (!iso) return;
+    const endDate = new Date(iso);
+    if (Date.now() >= endDate.getTime()) {
+      anySaleEnded = true;
+      return;
+    }
+    el.textContent = formatCountdownText(endDate);
+  });
+  // 有特價剛好倒數到 0：ITEMS 本身的資料沒變，只是「現在算不算特價中」這個
+  // 判斷結果變了，所以不用重新打資料庫，直接把畫面重畫一次就會自動變回原價、
+  // 從特價區消失（isOnSale() 每次都是即時算現在時間，不用額外處理）。
+  if (anySaleEnded) {
+    renderGrid();
+    renderSaleSection();
+  }
 }
 
 function renderAuctionSection() {
@@ -1464,7 +1502,7 @@ loadTaxonomy();
 // 每 30 秒重新讀一次競標資料（讓「目前價格／得標人」跟其他人同步），
 // 每秒重畫一次倒數計時文字（不用重新打資料庫，只是純粹更新畫面上的「剩 X 分 X 秒」文字）。
 setInterval(loadAuctions, 30000);
-setInterval(updateAuctionCountdowns, 1000);
+setInterval(updateCountdowns, 1000);
 // 先同步畫一次預設的首圖重點列，這樣就算等一下讀取後台設定失敗（例如網路問題），
 // 畫面也不會開天窗變成空白一排，一定至少看得到預設內容。
 renderHeroTrustRow([]);

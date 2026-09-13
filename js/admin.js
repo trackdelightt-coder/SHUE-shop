@@ -400,10 +400,21 @@ function isoLocalFromDate(d) {
 }
 
 async function loadAuctions() {
-  const snap = await getDocs(collection(db, "auctions"));
-  ALL_AUCTIONS = snap.docs
-    .map((d) => ({ id: d.id, ...d.data() }))
-    .sort((a, b) => Number(b.sortOrder || 0) - Number(a.sortOrder || 0));
+  // 這裡一定要包 try/catch：如果 Firebase 後台的規則還沒加回競標功能那段
+  // （例如暫時先求穩、還沒加回去的期間），讀取 auctions 這個集合會被規則擋下來，
+  // 直接噴出權限錯誤。這個函式是跟 loadItems()/loadSeries() 一起在 showAdmin()
+  // 用 Promise.all 同時執行的，如果這裡沒接住錯誤，會連帶讓 Promise.all 直接中斷，
+  // 導致後面的「載入分類/標籤設定」整個沒有機會執行到，變成分類管理、標籤管理
+  // 整區看起來像「不見了」（其實只是還沒被畫出來，不是資料真的不見）。
+  try {
+    const snap = await getDocs(collection(db, "auctions"));
+    ALL_AUCTIONS = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => Number(b.sortOrder || 0) - Number(a.sortOrder || 0));
+  } catch (err) {
+    console.error("[Firestore] 讀取競標商品失敗（可能是規則還沒開放）:", err);
+    ALL_AUCTIONS = [];
+  }
   renderAuctionsAdmin();
 }
 
