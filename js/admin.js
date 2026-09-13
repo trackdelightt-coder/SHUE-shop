@@ -148,7 +148,7 @@ onAuthStateChanged(auth, (user) => {
 async function showAdmin() {
   document.getElementById("loginView").style.display = "none";
   document.getElementById("adminView").style.display = "block";
-  await Promise.all([loadItems(), loadSeries()]);
+  await Promise.all([loadItems(), loadSeries(), loadAuctions()]);
   await loadTaxonomy();
   refreshTaxonomyUI();
 }
@@ -164,6 +164,11 @@ document.getElementById("tabSeries").onclick = () => {
   loadSeries();
 };
 
+document.getElementById("tabAuctions").onclick = () => {
+  setActiveTab("tabAuctions");
+  loadAuctions();
+};
+
 document.getElementById("tabOrders").onclick = () => {
   setActiveTab("tabOrders");
   document.getElementById("ordersPanel").style.display = "block";
@@ -177,11 +182,12 @@ document.getElementById("tabSettings").onclick = () => {
 };
 
 function setActiveTab(activeId) {
-  ["tabItems", "tabSeries", "tabOrders", "tabSettings"].forEach((id) => {
+  ["tabItems", "tabSeries", "tabAuctions", "tabOrders", "tabSettings"].forEach((id) => {
     document.getElementById(id).classList.toggle("active", id === activeId);
   });
   document.getElementById("itemsPanel").style.display = activeId === "tabItems" ? "block" : "none";
   document.getElementById("seriesPanel").style.display = activeId === "tabSeries" ? "block" : "none";
+  document.getElementById("auctionsPanel").style.display = activeId === "tabAuctions" ? "block" : "none";
   document.getElementById("ordersPanel").style.display = activeId === "tabOrders" ? "block" : "none";
   document.getElementById("settingsPanel").style.display = activeId === "tabSettings" ? "block" : "none";
 }
@@ -372,6 +378,182 @@ async function seedDefaultSeries() {
   await loadSeries();
   alert("預設幸運盒系列已建立。");
 }
+
+// ---------- 競標商品 ----------
+// 跟商品管理一樣，每個競標商品是「auctions」collection 裡的一筆獨立文件（不是塞在同一份設定文件裡），
+// 這樣買家出價時才能針對「單一這筆競標商品」直接更新，不會動到其他競標商品或設定資料。
+let ALL_AUCTIONS = [];
+
+// 把 Firestore 讀回來的 endTime 轉成 JS Date，兼容「正式環境 Timestamp」／「純 Date 物件」／「字串」三種型態。
+function toDateSafeAdmin(value) {
+  if (!value) return null;
+  if (typeof value.toDate === "function") return value.toDate();
+  if (value instanceof Date) return value;
+  const parsed = new Date(value);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+// datetime-local 欄位需要的字串格式（本地時間，不含時區），跟特價功能的 isoLocal 用法一致。
+function isoLocalFromDate(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+async function loadAuctions() {
+  const snap = await getDocs(collection(db, "auctions"));
+  ALL_AUCTIONS = snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => Number(b.sortOrder || 0) - Number(a.sortOrder || 0));
+  renderAuctionsAdmin();
+}
+
+function renderAuctionsAdmin() {
+  const tbody = document.getElementById("auctionsTbody");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  if (ALL_AUCTIONS.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);">還沒有競標商品</td></tr>';
+    return;
+  }
+  ALL_AUCTIONS.forEach((auction) => {
+    const endDate = toDateSafeAdmin(auction.endTime);
+    const timeUp = !endDate || Date.now() >= endDate.getTime();
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td><img src="${auction.image || PLACEHOLDER_IMG}" alt="${auction.name || ""}" style="width:52px;height:40px;object-fit:cover;border-radius:6px;" /></td>
+      <td>${auction.name || ""}</td>
+      <td>${auction.paymentMethod === "現金" ? "💵 現金" : "🍬 糖果"}</td>
+      <td>${auction.startingPrice ?? "-"}</td>
+      <td>${auction.currentPrice ?? auction.startingPrice ?? "-"}</td>
+      <td>${auction.currentBidderName ? auction.currentBidderName : "（尚無出價）"}</td>
+      <td>${auction.bidCount || 0}</td>
+      <td>${endDate ? endDate.toLocaleString("zh-TW") : "-"}</td>
+      <td>${auction.active === false ? "已下架" : timeUp ? "已結標" : "競標中"}</td>
+      <td class="row-actions"><button class="edit">編輯</button><button class="toggle">${auction.active === false ? "上架" : "下架"}</button><button class="del">刪除</button></td>
+    `;
+    const img = row.querySelector("img");
+    img.onerror = () => { img.onerror = null; img.src = PLACEHOLDER_IMG; };
+    row.querySelector(".edit").onclick = () => fillAuctionForm(auction);
+    row.querySelector(".toggle").onclick = async () => {
+      try {
+        await updateDoc(doc(db, "auctions", auction.id), { active: auction.active === false });
+        loadAuctions();
+      } catch (err) {
+        alert("狀態切換失敗：" + (err && err.message ? err.message : err));
+      }
+    };
+    row.querySelector(".del").onclick = async () => {
+      if (!confirm(`確定刪除「${auction.name}」這個競標商品嗎？（已出價的紀錄不會被刪除，只是這個競標商品本身會消失）`)) return;
+      try {
+        await deleteDoc(doc(db, "auctions", auction.id));
+        loadAuctions();
+      } catch (err) {
+        alert("刪除失敗：" + (err && err.message ? err.message : err));
+      }
+    };
+    tbody.appendChild(row);
+  });
+}
+
+function fillAuctionForm(auction) {
+  document.getElementById("auctionId").value = auction.id;
+  document.getElementById("aName").value = auction.name || "";
+  document.getElementById("aPaymentMethod").value = auction.paymentMethod || "糖果";
+  document.getElementById("aStartingPrice").value = auction.startingPrice ?? "";
+  document.getElementById("aBidIncrement").value = auction.bidIncrement ?? "";
+  const endDate = toDateSafeAdmin(auction.endTime);
+  document.getElementById("aEndTime").value = endDate ? isoLocalFromDate(endDate) : "";
+  document.getElementById("aImage").value = auction.image || "";
+  document.getElementById("aDesc").value = auction.description || "";
+  updateAuctionStatusHint();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function clearAuctionForm() {
+  document.getElementById("auctionId").value = "";
+  document.getElementById("aName").value = "";
+  document.getElementById("aPaymentMethod").value = "糖果";
+  document.getElementById("aStartingPrice").value = "";
+  document.getElementById("aBidIncrement").value = "";
+  document.getElementById("aEndTime").value = "";
+  document.getElementById("aImage").value = "";
+  document.getElementById("aDesc").value = "";
+  updateAuctionStatusHint();
+}
+
+function updateAuctionStatusHint() {
+  const hint = document.getElementById("auctionStatusHint");
+  if (!hint) return;
+  const endRaw = document.getElementById("aEndTime").value;
+  if (!endRaw) {
+    hint.textContent = "尚未設定結標時間";
+    hint.className = "sale-status-hint";
+    return;
+  }
+  const end = new Date(endRaw);
+  if (isNaN(end.getTime())) {
+    hint.textContent = "時間設定有誤";
+    hint.className = "sale-status-hint";
+    return;
+  }
+  if (Date.now() >= end.getTime()) {
+    hint.textContent = "⚠️ 這個時間已經過了，存檔後買家會直接看到「已結標」，不能再出價";
+    hint.className = "sale-status-hint";
+  } else {
+    hint.textContent = "✅ 時間到了會自動停止出價，不用手動關閉";
+    hint.className = "sale-status-hint active";
+  }
+}
+document.getElementById("aEndTime")?.addEventListener("input", updateAuctionStatusHint);
+
+async function saveAuction() {
+  const id = document.getElementById("auctionId").value;
+  const name = document.getElementById("aName").value.trim();
+  const startingPrice = Number(document.getElementById("aStartingPrice").value);
+  const bidIncrement = Number(document.getElementById("aBidIncrement").value);
+  const endRaw = document.getElementById("aEndTime").value;
+  if (!name || !Number.isFinite(startingPrice) || !Number.isFinite(bidIncrement) || bidIncrement <= 0 || !endRaw) {
+    alert("請填寫商品名稱、正確的起標價、大於 0 的加價金額，以及結標時間");
+    return;
+  }
+  const endDate = new Date(endRaw);
+  if (isNaN(endDate.getTime())) {
+    alert("結標時間格式有誤");
+    return;
+  }
+  const payload = {
+    name,
+    paymentMethod: document.getElementById("aPaymentMethod").value,
+    startingPrice,
+    bidIncrement,
+    endTime: endDate,
+    image: document.getElementById("aImage").value.trim(),
+    description: document.getElementById("aDesc").value.trim(),
+  };
+  try {
+    if (id) {
+      await updateDoc(doc(db, "auctions", id), payload);
+    } else {
+      await addDoc(collection(db, "auctions"), {
+        ...payload,
+        active: true,
+        currentPrice: startingPrice,
+        currentBidderName: "",
+        currentBidderContact: "",
+        bidCount: 0,
+        sortOrder: Date.now(),
+      });
+    }
+  } catch (err) {
+    alert("儲存失敗：" + (err && err.message ? err.message : err));
+    return;
+  }
+  clearAuctionForm();
+  loadAuctions();
+}
+
+document.getElementById("saveAuctionBtn")?.addEventListener("click", saveAuction);
+document.getElementById("clearAuctionBtn")?.addEventListener("click", clearAuctionForm);
 
 // 分類 / 標籤清單現在存在 Firestore（settings/taxonomy），妳可以直接在後台「分類與標籤管理」新增或刪除，
 // 不用再麻煩我改程式碼。這裡的清單只在資料庫裡還沒有任何設定時，第一次自動建立用（種子資料）。
@@ -830,6 +1012,57 @@ async function uploadColorVariantImage(file, row) {
   }
 }
 
+// 特價設定：糖果特價、現金特價、開始時間、結束時間，四個欄位要嘛都填、要嘛都不填，
+// 只填一部分的話當作沒設定特價（不然買家頁面那邊會算出奇怪的結果，例如只有價格沒有時間）。
+function getSaleFieldsFromForm() {
+  const candyRaw = document.getElementById("fSalePriceCandy").value.trim();
+  const cashRaw = document.getElementById("fSalePriceCash").value.trim();
+  const startRaw = document.getElementById("fSaleStart").value;
+  const endRaw = document.getElementById("fSaleEnd").value;
+  if (!candyRaw || !cashRaw || !startRaw || !endRaw) {
+    return { salePriceCandy: null, salePriceCash: null, saleStart: null, saleEnd: null };
+  }
+  return {
+    salePriceCandy: Number(candyRaw),
+    salePriceCash: Number(cashRaw),
+    saleStart: startRaw,
+    saleEnd: endRaw,
+  };
+}
+
+// 在表單上即時顯示「現在算不算特價中」，方便妳自己核對時間設定得對不對，不用存檔後再跑去買家頁面確認。
+function updateSaleStatusHint() {
+  const hintEl = document.getElementById("saleStatusHint");
+  if (!hintEl) return;
+  const { salePriceCandy, salePriceCash, saleStart, saleEnd } = getSaleFieldsFromForm();
+  if (salePriceCandy == null || salePriceCash == null || !saleStart || !saleEnd) {
+    hintEl.textContent = "目前狀態：沒有設定特價（四個欄位都要填才會生效）";
+    hintEl.classList.remove("active");
+    return;
+  }
+  const start = new Date(saleStart);
+  const end = new Date(saleEnd);
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || start >= end) {
+    hintEl.textContent = "目前狀態：時間設定有誤（結束時間要晚於開始時間）";
+    hintEl.classList.remove("active");
+    return;
+  }
+  const now = new Date();
+  if (now < start) {
+    hintEl.textContent = `目前狀態：尚未開始（將於 ${start.toLocaleString("zh-TW")} 開始特價）`;
+    hintEl.classList.remove("active");
+  } else if (now > end) {
+    hintEl.textContent = `目前狀態：已結束（${end.toLocaleString("zh-TW")} 已過期，買家現在看到的是原價）`;
+    hintEl.classList.remove("active");
+  } else {
+    hintEl.textContent = `目前狀態：特價中！將於 ${end.toLocaleString("zh-TW")} 自動恢復原價`;
+    hintEl.classList.add("active");
+  }
+}
+["fSalePriceCandy", "fSalePriceCash", "fSaleStart", "fSaleEnd"].forEach((id) => {
+  document.getElementById(id)?.addEventListener("input", updateSaleStatusHint);
+});
+
 function getColorVariantsFromForm() {
   const rows = Array.from(document.querySelectorAll("#colorVariantRows .color-variant-row"));
   return rows
@@ -987,8 +1220,14 @@ function fillForm(item) {
 
   document.getElementById("fPriceCandy").value = item.priceCandy;
   document.getElementById("fPriceCash").value = item.priceCash;
+  document.getElementById("fSalePriceCandy").value = item.salePriceCandy ?? "";
+  document.getElementById("fSalePriceCash").value = item.salePriceCash ?? "";
+  document.getElementById("fSaleStart").value = item.saleStart || "";
+  document.getElementById("fSaleEnd").value = item.saleEnd || "";
+  updateSaleStatusHint();
   document.getElementById("fStock").value = item.stock;
   document.getElementById("fImage").value = item.image;
+  document.getElementById("fZoomImage").value = item.zoomImage || "";
   document.getElementById("fDesc").value = item.description || "";
   document.getElementById("fIsNew").checked = item.isNew === true;
   document.getElementById("fGiftEligible").checked = item.giftEligible === true;
@@ -1011,6 +1250,12 @@ function clearForm() {
     (id) => (document.getElementById(id).value = "")
   );
   document.getElementById("fImage").value = IMAGE_URL_TEMPLATE;
+  document.getElementById("fZoomImage").value = "";
+  document.getElementById("fSalePriceCandy").value = "";
+  document.getElementById("fSalePriceCash").value = "";
+  document.getElementById("fSaleStart").value = "";
+  document.getElementById("fSaleEnd").value = "";
+  updateSaleStatusHint();
   document.getElementById("fIsNew").checked = false;
   document.getElementById("fGiftEligible").checked = false;
   renderTagPicker([]);
@@ -1051,6 +1296,8 @@ async function saveItem() {
     colorVariants,
     stockByAlt: getAltStockFromForm(),
     image: document.getElementById("fImage").value.trim(),
+    zoomImage: document.getElementById("fZoomImage").value.trim(),
+    ...getSaleFieldsFromForm(),
     description: document.getElementById("fDesc").value.trim(),
   };
   if (!payload.name || !Number.isFinite(priceCandy) || !Number.isFinite(priceCash)) {

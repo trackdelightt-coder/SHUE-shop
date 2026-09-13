@@ -104,7 +104,32 @@ function savePayMethod() {
 }
 
 function priceFor(item, paymentMethod) {
+  if (isOnSale(item)) {
+    return paymentMethod === "糖果" ? Number(item.salePriceCandy) : Number(item.salePriceCash);
+  }
   return paymentMethod === "糖果" ? item.priceCandy : item.priceCash;
+}
+
+// 商品原本（沒特價時）的價格，特價卡片上要拿來劃掉顯示用的。
+function originalPriceFor(item, paymentMethod) {
+  return paymentMethod === "糖果" ? item.priceCandy : item.priceCash;
+}
+
+// 特價區：後台幫商品填「特價金額」＋「特價開始/結束時間」，不用另外開關——
+// 只要現在的時間有落在區間內，就自動算是特價中；時間到了（還沒開始，或已經過期）
+// 就自動變回原價、自動從特價區消失，不用手動去改或關掉。
+function isOnSale(item) {
+  if (item.salePriceCandy === undefined || item.salePriceCandy === null || item.salePriceCandy === "") return false;
+  if (item.salePriceCash === undefined || item.salePriceCash === null || item.salePriceCash === "") return false;
+  const candy = Number(item.salePriceCandy);
+  const cash = Number(item.salePriceCash);
+  if (!Number.isFinite(candy) || !Number.isFinite(cash)) return false;
+  if (!item.saleStart || !item.saleEnd) return false;
+  const start = new Date(item.saleStart);
+  const end = new Date(item.saleEnd);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return false;
+  const now = new Date();
+  return now >= start && now <= end;
 }
 
 // ---------- 顏色款式（同一件商品有好幾種顏色，各自有自己的照片、庫存） ----------
@@ -282,6 +307,10 @@ function openSeries(seriesId) {
     bottomBack.style.display = "block";
     section.style.display = "none";
     if (giftSection) giftSection.style.display = "none";
+    const saleSectionOnSeries = document.getElementById("saleSection");
+    if (saleSectionOnSeries) saleSectionOnSeries.style.display = "none";
+    const auctionSectionOnSeries = document.getElementById("auctionSection");
+    if (auctionSectionOnSeries) auctionSectionOnSeries.style.display = "none";
   }
   renderFilters();
   renderGrid();
@@ -302,6 +331,8 @@ function closeSpecialView() {
   renderFilters();
   renderGrid();
   renderGiftSection();
+  renderSaleSection();
+  renderAuctionSection();
 }
 
 // 贈品專區按「查看更多」：把下面商品清單切成只顯示贈品商品，並顯示返回鍵。
@@ -320,6 +351,10 @@ function openGiftView() {
   bottomBack.style.display = "block";
   document.getElementById("seriesSection").style.display = "none";
   document.getElementById("giftSection").style.display = "none";
+  const saleSectionOnGiftView = document.getElementById("saleSection");
+  if (saleSectionOnGiftView) saleSectionOnGiftView.style.display = "none";
+  const auctionSectionOnGiftView = document.getElementById("auctionSection");
+  if (auctionSectionOnGiftView) auctionSectionOnGiftView.style.display = "none";
   renderFilters();
   renderGrid();
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -351,6 +386,7 @@ async function loadItems() {
   renderSeries();
   renderCart();
   renderGiftSection();
+  renderSaleSection();
 }
 
 // 是否開啟「僅限女角」模式（後台設定）：開啟後前台只能選女角，男角按鈕會隱藏。
@@ -596,11 +632,14 @@ function buildProductCard(item, { extraClass, isGift } = {}) {
     : null;
   let selectedColor = hasVariants ? (firstInStockVariant || item.colorVariants[0]).color : null;
   const outOfStock = isOutOfStock(item, selectedColor);
+  // 贈品專區的商品本來就免費，不套用特價（特價/劃線價對贈品沒有意義）。
+  const onSale = !isGift && isOnSale(item);
 
   card.innerHTML = `
     <div class="card-img-wrap">
       <img src="${imageFor(item, selectedColor)}" alt="${escapeHtml(item.name)}" class="${outOfStock ? "img-soldout" : ""}" />
       ${item.isNew ? '<div class="ribbon-new">NEW</div>' : ""}
+      ${onSale ? '<div class="ribbon-sale">特價</div>' : ""}
       <div class="stamp-soldout" style="${outOfStock ? "" : "display:none;"}">已售完</div>
     </div>
     <div class="body">
@@ -619,7 +658,13 @@ function buildProductCard(item, { extraClass, isGift } = {}) {
           : ""
       }
       <div class="price-row">
-        <span class="price${isGift ? " gift-price" : ""}">${isGift ? "🎁 贈品（免費）" : formatPrice(PAYMENT_METHOD, priceFor(item, PAYMENT_METHOD))}</span>
+        <span class="price${isGift ? " gift-price" : ""}">${
+          isGift
+            ? "🎁 贈品（免費）"
+            : onSale
+              ? `<span class="price-sale-wrap"><span class="price-original">${formatPrice(PAYMENT_METHOD, originalPriceFor(item, PAYMENT_METHOD))}</span><span class="price-sale">${formatPrice(PAYMENT_METHOD, priceFor(item, PAYMENT_METHOD))}</span></span>`
+              : formatPrice(PAYMENT_METHOD, priceFor(item, PAYMENT_METHOD))
+        }</span>
         <span class="stock">${outOfStock ? "已售完" : "庫存 " + stockFor(item, selectedColor)}</span>
       </div>
       <button class="add-btn" ${outOfStock ? "disabled" : ""}>${isGift ? "加入贈品" : "加入購物車"}</button>
@@ -631,6 +676,11 @@ function buildProductCard(item, { extraClass, isGift } = {}) {
     imgEl.onerror = null;
     imgEl.src = PLACEHOLDER_IMG;
   };
+  // 點圖片放大看：如果後台有另外填「放大圖網址」（例如列表縮圖放的是示意圖，
+  // 放大想秀出商品本人的實際照片），就優先顯示那張；沒填的話就跟以前一樣，
+  // 顯示當下畫面上實際顯示的那張圖（所以商品有分顏色款式、買家換了顏色，
+  // 放大看到的也會是那個顏色當下顯示的圖片，不會對不上）。
+  imgEl.onclick = () => openImageLightbox((item.zoomImage && item.zoomImage.trim()) || imgEl.src, item.name);
 
   const addBtn = card.querySelector(".add-btn");
   const stockEl = card.querySelector(".stock");
@@ -659,6 +709,239 @@ function buildProductCard(item, { extraClass, isGift } = {}) {
 
   addBtn.onclick = () => (isGift ? addGiftToCart(item.id, selectedColor) : addToCart(item.id, selectedColor));
   return card;
+}
+
+// ---------- 特價區 ----------
+// 不是手動開關，是看每件商品自己的「特價時間區間」（後台設定）：現在時間有落在區間內的
+// 商品，就會自動出現在這裡（原價劃掉、特價變大字）；時間到了（還沒開始，或已經結束）
+// 就會自動消失、恢復原價，不用手動維護。
+function renderSaleSection() {
+  const section = document.getElementById("saleSection");
+  const grid = document.getElementById("saleGrid");
+  if (!section || !grid) return;
+
+  // 正在看系列頁或贈品「查看更多」全部列表時，跟贈品專區一樣先不要蓋回去。
+  if (ACTIVE_SERIES_ID || ACTIVE_GIFT_VIEW) {
+    section.style.display = "none";
+    return;
+  }
+
+  const saleItems = ITEMS.filter((i) => isOnSale(i));
+  if (saleItems.length === 0) {
+    section.style.display = "none";
+    grid.innerHTML = "";
+    return;
+  }
+  section.style.display = "block";
+  grid.innerHTML = "";
+  saleItems.forEach((item) => grid.appendChild(buildProductCard(item, { extraClass: "sale-card" })));
+}
+
+// ---------- 競標商品 ----------
+// 後台設定起標價、加價金額、結標時間，買家直接在頁面上點「出價」，
+// 每次出價 = 目前價格 + 加價金額，並記錄目前得標人，時間到了就不能再出價
+// （得標後不會自動結帳，妳要自己私訊 Discord 跟得標人收款、安排出貨）。
+let AUCTIONS = [];
+
+// 把 Firestore 讀回來的 endTime 轉成 JS Date，同時兼容三種可能的資料型態：
+// 1) 真的 Firestore Timestamp（正式環境，有 .toDate() 方法）
+// 2) 純 JS Date 物件（測試用的模擬資料庫）
+// 3) 字串（保險起見，避免哪天資料格式跑掉整頁報錯）
+function toDateSafe(value) {
+  if (!value) return null;
+  if (typeof value.toDate === "function") return value.toDate();
+  if (value instanceof Date) return value;
+  const parsed = new Date(value);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function auctionCountdownText(endDate) {
+  if (!endDate) return "";
+  const diffMs = endDate.getTime() - Date.now();
+  if (diffMs <= 0) return "已結標";
+  const totalSec = Math.floor(diffMs / 1000);
+  const days = Math.floor(totalSec / 86400);
+  const hours = Math.floor((totalSec % 86400) / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+  if (days > 0) return `剩 ${days} 天 ${hours} 小時`;
+  if (hours > 0) return `剩 ${hours} 小時 ${mins} 分`;
+  if (mins > 0) return `剩 ${mins} 分 ${secs} 秒`;
+  return `剩 ${secs} 秒`;
+}
+
+async function loadAuctions() {
+  try {
+    const snap = await getDocs(collection(db, "auctions"));
+    AUCTIONS = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+  } catch (err) {
+    console.error("[Firestore] 讀取競標商品失敗:", err);
+    AUCTIONS = [];
+  }
+  renderAuctionSection();
+}
+
+// 出價：用 transaction 確保「同時有兩個人搶著出價」時不會算錯——
+// 每次都是重新讀一次資料庫目前的價格，新價格＝當下價格＋加價金額，
+// 如果有人比你早一步送出，transaction 會自動重新算一次，不會出現兩個人都用同一個舊價格出價的情況。
+async function placeBid(auctionId, bidderName, bidderContact) {
+  return await runTransaction(db, async (tx) => {
+    const auctionRef = doc(db, "auctions", auctionId);
+    const snap = await tx.get(auctionRef);
+    if (!snap.exists() || snap.data().active === false) {
+      throw new Error("此競標商品已下架");
+    }
+    const auction = snap.data();
+    const endDate = toDateSafe(auction.endTime);
+    if (endDate && Date.now() >= endDate.getTime()) {
+      throw new Error("競標已結束，無法再出價");
+    }
+    const currentPrice = Number(auction.currentPrice ?? auction.startingPrice) || 0;
+    const increment = Number(auction.bidIncrement) || 0;
+    const newPrice = currentPrice + increment;
+    const newBidCount = (Number(auction.bidCount) || 0) + 1;
+
+    tx.update(auctionRef, {
+      currentPrice: newPrice,
+      currentBidderName: bidderName,
+      currentBidderContact: bidderContact || "",
+      bidCount: newBidCount,
+    });
+
+    const bidRef = doc(collection(db, "auctionBids"));
+    tx.set(bidRef, {
+      auctionId,
+      bidderName,
+      bidderContact: bidderContact || "",
+      amount: newPrice,
+      createdAt: serverTimestamp(),
+    });
+
+    return { newPrice, bidCount: newBidCount };
+  });
+}
+
+function buildAuctionCard(auction) {
+  const card = document.createElement("div");
+  card.className = "card auction-card";
+
+  const endDate = toDateSafe(auction.endTime);
+  const timeUp = !endDate || Date.now() >= endDate.getTime();
+  const ended = timeUp || auction.active === false;
+  const hasBid = Number(auction.bidCount) > 0;
+  const currentPrice = Number(auction.currentPrice ?? auction.startingPrice) || 0;
+  const nextPrice = currentPrice + (Number(auction.bidIncrement) || 0);
+  const soonMs = endDate ? endDate.getTime() - Date.now() : Infinity;
+
+  card.innerHTML = `
+    <div class="card-img-wrap">
+      <img src="${auction.image || PLACEHOLDER_IMG}" alt="${escapeHtml(auction.name || "")}" />
+      <div class="ribbon-auction">競標</div>
+    </div>
+    <div class="body">
+      <h3>${escapeHtml(auction.name || "")}</h3>
+      ${auction.description ? `<div class="desc">${escapeHtml(auction.description)}</div>` : ""}
+      <div class="auction-price-row">
+        <span class="auction-current-label">${hasBid ? "目前價格" : "起標價"}</span>
+        <span class="auction-current-price">${formatPrice(auction.paymentMethod, currentPrice)}</span>
+      </div>
+      <div class="auction-meta-row">
+        <span class="auction-bidder">${hasBid ? `目前得標：${escapeHtml(auction.currentBidderName || "")}` : "尚無出價"}</span>
+        ${!ended ? `<span class="auction-countdown${soonMs < 3600 * 1000 ? " ending-soon" : ""}" data-end="${endDate.toISOString()}">${auctionCountdownText(endDate)}</span>` : ""}
+      </div>
+      ${
+        ended
+          ? `<div class="auction-ended-badge">${auction.active === false ? "已下架" : "競標已結束"}${hasBid ? `　得標者：${escapeHtml(auction.currentBidderName || "")}` : ""}</div>`
+          : `
+            <input type="text" class="auction-name-input" placeholder="您的暱稱 / 遊戲ID" value="${escapeHtml(localStorage.getItem("mstar_bidder_name") || "")}" />
+            <input type="text" class="auction-contact-input" placeholder="您的 Discord ID（選填，備用）" value="${escapeHtml(localStorage.getItem("mstar_bidder_contact") || "")}" />
+            <button type="button" class="auction-bid-btn">出價 ${formatPrice(auction.paymentMethod, nextPrice)}</button>
+            <div class="auction-msg"></div>
+          `
+      }
+    </div>
+  `;
+
+  const imgEl = card.querySelector("img");
+  imgEl.onerror = () => { imgEl.onerror = null; imgEl.src = PLACEHOLDER_IMG; };
+  imgEl.onclick = () => openImageLightbox(imgEl.src, auction.name);
+
+  if (!ended) {
+    const bidBtn = card.querySelector(".auction-bid-btn");
+    const nameInput = card.querySelector(".auction-name-input");
+    const contactInput = card.querySelector(".auction-contact-input");
+    const msgEl = card.querySelector(".auction-msg");
+    const bidBtnDefaultText = bidBtn.textContent;
+    bidBtn.onclick = async () => {
+      const bidderName = nameInput.value.trim();
+      const bidderContact = contactInput.value.trim();
+      if (!bidderName) {
+        msgEl.textContent = "請先填寫您的暱稱 / 遊戲ID";
+        msgEl.className = "auction-msg error";
+        return;
+      }
+      bidBtn.disabled = true;
+      bidBtn.textContent = "出價中...";
+      try {
+        await placeBid(auction.id, bidderName, bidderContact);
+        localStorage.setItem("mstar_bidder_name", bidderName);
+        localStorage.setItem("mstar_bidder_contact", bidderContact);
+        msgEl.textContent = "🎉 出價成功！目前您是最高出價者";
+        msgEl.className = "auction-msg success";
+        await loadAuctions();
+      } catch (err) {
+        msgEl.textContent = "出價失敗：" + (err && err.message ? err.message : err);
+        msgEl.className = "auction-msg error";
+        bidBtn.disabled = false;
+        bidBtn.textContent = bidBtnDefaultText;
+      }
+    };
+  }
+
+  return card;
+}
+
+// 只更新畫面上「剩 X 分 X 秒」的文字，不整個重畫卡片——
+// 不然買家正在輸入暱稱/聯絡方式打到一半，每秒都被清空重畫就太干擾了。
+function updateAuctionCountdowns() {
+  let anyEnded = false;
+  document.querySelectorAll("#auctionGrid .auction-countdown").forEach((el) => {
+    const iso = el.dataset.end;
+    if (!iso) return;
+    const endDate = new Date(iso);
+    if (Date.now() >= endDate.getTime()) {
+      anyEnded = true;
+      return;
+    }
+    el.textContent = auctionCountdownText(endDate);
+    el.classList.toggle("ending-soon", endDate.getTime() - Date.now() < 3600 * 1000);
+  });
+  // 有競標剛好倒數到 0，重新讀一次資料庫，把卡片換成「已結標」狀態、關閉出價按鈕。
+  if (anyEnded) loadAuctions();
+}
+
+function renderAuctionSection() {
+  const section = document.getElementById("auctionSection");
+  const grid = document.getElementById("auctionGrid");
+  if (!section || !grid) return;
+
+  // 跟特價區、贈品專區一樣：正在看系列頁或贈品「查看更多」全部列表時先不要蓋回去。
+  if (ACTIVE_SERIES_ID || ACTIVE_GIFT_VIEW) {
+    section.style.display = "none";
+    return;
+  }
+
+  const visibleAuctions = AUCTIONS.filter((a) => a.active !== false);
+  if (visibleAuctions.length === 0) {
+    section.style.display = "none";
+    grid.innerHTML = "";
+    return;
+  }
+  section.style.display = "block";
+  grid.innerHTML = "";
+  visibleAuctions.forEach((auction) => grid.appendChild(buildAuctionCard(auction)));
 }
 
 // ---------- 贈品專區 ----------
@@ -764,6 +1047,7 @@ function setPaymentMethod(method) {
   updatePayToggleUI();
   renderGrid();
   renderCart();
+  renderSaleSection();
 }
 
 function updatePayToggleUI() {
@@ -1152,9 +1436,35 @@ document.getElementById("popupAnnouncementClose")?.addEventListener("click", () 
   const overlay = document.getElementById("popupAnnouncementOverlay");
   if (overlay) overlay.style.display = "none";
 });
+
+// 商品圖片點擊放大看的小燈箱：不管是全部家具的格子還是贈品專區，圖片都共用這一個放大視窗。
+function openImageLightbox(src, alt) {
+  const overlay = document.getElementById("imageLightboxOverlay");
+  const img = document.getElementById("imageLightboxImg");
+  if (!overlay || !img) return;
+  img.src = src;
+  img.alt = alt || "";
+  overlay.style.display = "flex";
+}
+function closeImageLightbox() {
+  const overlay = document.getElementById("imageLightboxOverlay");
+  if (overlay) overlay.style.display = "none";
+}
+document.getElementById("imageLightboxClose")?.addEventListener("click", closeImageLightbox);
+document.getElementById("imageLightboxOverlay")?.addEventListener("click", (e) => {
+  // 點背景（不是點圖片本身）就關閉，方便買家隨手點一下退出
+  if (e.target.id === "imageLightboxOverlay") closeImageLightbox();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeImageLightbox();
+});
 document.getElementById("backToTopBtn")?.addEventListener("click", () => window.scrollTo({top:0,behavior:"smooth"}));
-Promise.all([loadItems(), loadSeries()]);
+Promise.all([loadItems(), loadSeries(), loadAuctions()]);
 loadTaxonomy();
+// 每 30 秒重新讀一次競標資料（讓「目前價格／得標人」跟其他人同步），
+// 每秒重畫一次倒數計時文字（不用重新打資料庫，只是純粹更新畫面上的「剩 X 分 X 秒」文字）。
+setInterval(loadAuctions, 30000);
+setInterval(updateAuctionCountdowns, 1000);
 // 先同步畫一次預設的首圖重點列，這樣就算等一下讀取後台設定失敗（例如網路問題），
 // 畫面也不會開天窗變成空白一排，一定至少看得到預設內容。
 renderHeroTrustRow([]);
