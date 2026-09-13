@@ -1243,7 +1243,9 @@ async function checkout() {
         if (availableStock !== undefined && combinedQtyByKey[entry.key] > availableStock) {
           throw new Error(`「${item.name}${entry.color ? `（${entry.color}）` : ""}」庫存不足`);
         }
-        const unitPrice = entry.isGift ? 0 : PAYMENT_METHOD === "糖果" ? item.priceCandy : item.priceCash;
+        // 這裡一定要用 priceFor()（會檢查特價中/特價時間），不能直接抓 item.priceCandy/priceCash，
+        // 否則購物車畫面顯示的是特價、但送出訂單卻是用原價計算，導致「下單後特價品還是原價格」的問題。
+        const unitPrice = entry.isGift ? 0 : priceFor(item, PAYMENT_METHOD);
         const lineTotal = unitPrice * entry.qty;
         total += lineTotal;
         orderItems.push({
