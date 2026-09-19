@@ -380,6 +380,7 @@ async function loadItems() {
     grid.innerHTML =
       '<div class="cart-empty">商品讀取失敗，請確認 firebase-init.js 是否已經填好設定值。</div>';
   }
+  cleanupInvalidCartEntries();
   renderFilters();
   renderTagFilters();
   renderGrid();
@@ -387,6 +388,40 @@ async function loadItems() {
   renderCart();
   renderGiftSection();
   renderSaleSection();
+}
+
+// 購物車是存在買家瀏覽器的 localStorage 裡，即使關掉分頁、隔了很多天再回來也還在。
+// 但如果這段期間商品被下架或刪除了（或是有顏色款式的商品，該顏色被移除了），
+// 購物車畫面（renderCart）原本只是「找不到商品就悄悄跳過不顯示」，
+// 不會把它從購物車資料裡真的刪掉——這樣買家自己完全看不出來購物車裡有這個「幽靈商品」，
+// 但按下「送出訂單」時，送出的還是完整的購物車資料，一送出就會因為這個已經不存在的商品
+// 噴出「商品不存在或已下架」的錯誤，買家會覺得莫名其妙（尤其手機上購物車常常放好幾天才結帳，
+// 更容易遇到商品這段期間被下架/刪除/改款式的情況）。
+// 這裡在每次重新讀取商品資料之後，順手把購物車裡這種「已經不存在的商品」清掉，
+// 並且用 msgBox 提示一下買家，這樣購物車看到的、跟送出訂單時送出的，才會是同一份資料。
+function cleanupInvalidCartEntries() {
+  let removedNames = [];
+
+  [CART, GIFT_CART].forEach((cartObj) => {
+    Object.keys(cartObj).forEach((key) => {
+      const { id, color } = parseCartKey(key);
+      const item = ITEMS.find((i) => i.id === id);
+      const invalid = !item || (color && !getVariant(item, color));
+      if (invalid) {
+        removedNames.push(item ? `${item.name}${color ? `（${color}）` : ""}` : "某項商品");
+        delete cartObj[key];
+      }
+    });
+  });
+
+  if (removedNames.length > 0) {
+    saveCart();
+    saveGiftCart();
+    const msgBox = document.getElementById("msgBox");
+    if (msgBox) {
+      msgBox.innerHTML = `<div class="msg error">購物車裡的「${removedNames.join("、")}」已下架或不存在，已自動從購物車移除，請重新確認購物車內容再送出訂單</div>`;
+    }
+  }
 }
 
 // 是否開啟「僅限女角」模式（後台設定）：開啟後前台只能選女角，男角按鈕會隱藏。
@@ -1505,6 +1540,38 @@ loadTaxonomy();
 // 每秒重畫一次倒數計時文字（不用重新打資料庫，只是純粹更新畫面上的「剩 X 分 X 秒」文字）。
 setInterval(loadAuctions, 30000);
 setInterval(updateCountdowns, 1000);
+
+// 商品資料（ITEMS）原本只有網頁「第一次打開」的時候讀一次，之後就完全不會再更新，
+// 除非買家自己整頁重新整理。這在手機上特別容易出問題：買家逛到一半切去別的 App
+// （例如切去 Discord 回訊息、或手機直接把分頁放到背景），過了一段時間才切回來，
+// 這段期間如果賣家在後台改了商品（下架、刪除、改顏色款式），買家手機上看到的
+// 還是切出去之前的舊資料——這時候買家會覺得「我是剛加入購物車的，又不是放很久」，
+// 但實際上是「畫面沒重新整理過，商品資料已經跟資料庫兜不起來了」，一送出訂單
+// 用最新資料一驗證就會出現「商品不存在或已下架」。
+// 這裡做兩件事來補這個洞：
+// 1. 每 30 秒自動重新讀一次商品資料（跟上面競標資料的做法一樣），讓網頁放著不動
+//    也會自動跟資料庫同步，不會放越久差越多。
+// 2. 買家從背景切回這個分頁的當下，馬上重新讀一次（不用等到下一次 30 秒），
+//    這是手機最常發生「資料變舊」的時間點，越快同步越能避免買到已經不存在的商品。
+//    用一個時間戳記做簡單防抖，避免 visibilitychange 跟 pageshow 幾乎同時觸發、
+//    短時間內重複打兩次資料庫。
+let lastItemsRefreshAt = Date.now();
+function refreshItemsIfStale() {
+  const now = Date.now();
+  if (now - lastItemsRefreshAt < 3000) return; // 3 秒內剛讀過就不用重複讀
+  lastItemsRefreshAt = now;
+  loadItems();
+}
+setInterval(refreshItemsIfStale, 30000);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") refreshItemsIfStale();
+});
+window.addEventListener("pageshow", (e) => {
+  // e.persisted：頁面是從瀏覽器的「返回快取（bfcache）」直接還原回來的，
+  // 不是重新載入——iOS Safari 切換 App 再切回來很常見這種情況，
+  // JS 的變數（包含 ITEMS）會維持切出去當下的舊狀態，不會自動重新執行。
+  if (e.persisted) refreshItemsIfStale();
+});
 // 先同步畫一次預設的首圖重點列，這樣就算等一下讀取後台設定失敗（例如網路問題），
 // 畫面也不會開天窗變成空白一排，一定至少看得到預設內容。
 renderHeroTrustRow([]);
