@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>蘇蘇家具商店 - 後台管理</title>
-<link rel="stylesheet" href="css/style.css?v=913-20260913-3" />
+<link rel="stylesheet" href="css/style.css?v=924-20260924-3" />
 </head>
 <body>
   <header class="topbar">
@@ -28,6 +28,7 @@
       <button id="tabItems" class="active">商品管理</button>
       <button id="tabSeries">幸運盒系列</button>
       <button id="tabAuctions">競標商品</button>
+      <button id="tabExchange">交換區</button>
       <button id="tabOrders">訂單管理</button>
       <button id="tabSettings">商店設定</button>
       <button id="logoutBtn" style="margin-left:auto;">登出</button>
@@ -270,6 +271,49 @@
       </table>
     </div>
 
+    <div id="exchangePanel" style="display:none;">
+      <div class="form-grid" id="exchangeItemForm">
+        <input type="hidden" id="exchangeItemId" />
+        <div>
+          <label>我要用這個（妳手上有、要拿出來交換的東西）</label>
+          <input id="eGiveName" placeholder="例：月光女神-米" />
+        </div>
+        <div>
+          <label>圖片網址</label>
+          <input id="eGiveImage" placeholder="https://..." />
+        </div>
+        <div class="full">
+          <label>限制／備註（選填，例如「無限制」「限白色」，會顯示在圖片下方小標籤）</label>
+          <input id="eGiveNote" placeholder="例：無限制" />
+        </div>
+        <div>
+          <label>換這個（妳想收到的東西）</label>
+          <input id="eWantName" placeholder="例：月光女神-黑" />
+        </div>
+        <div>
+          <label>圖片網址</label>
+          <input id="eWantImage" placeholder="https://..." />
+        </div>
+        <div class="full">
+          <label>限制／備註（選填，例如「無限制」「限白色」，會顯示在圖片下方小標籤）</label>
+          <input id="eWantNote" placeholder="例：無限制" />
+        </div>
+        <div class="full">
+          <label>可交換數量（選填，不填就不顯示這行）</label>
+          <input id="eQuantity" type="number" placeholder="例：1" />
+        </div>
+        <button id="saveExchangeItemBtn" class="primary-submit">新增 / 儲存交換配對</button>
+        <button id="clearExchangeItemBtn" class="secondary-btn" type="button">清空表單</button>
+      </div>
+      <div class="exchange-admin-note">⚠️ 提醒：這區只是展示用的交換清單，買家不會透過網站送出任何申請或資料，想交換的人會直接私訊妳的 Discord，請自行留意訊息、安排交換細節。想暫停某組交換，把它「下架」即可，買家頁面會立刻看不到。</div>
+      <table>
+        <thead>
+          <tr><th>我要用</th><th>換這個</th><th>可交換數量</th><th>狀態</th><th>操作</th></tr>
+        </thead>
+        <tbody id="exchangeItemsTbody"></tbody>
+      </table>
+    </div>
+
     <div id="settingsPanel" style="display:none;">
       <div class="form-grid" style="grid-template-columns: 1fr;">
         <div>
@@ -306,6 +350,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/admin.js?v=913-20260913-3"></script>
+  <script type="module" src="js/admin.js?v=924-20260924-3"></script>
 </body>
 </html>

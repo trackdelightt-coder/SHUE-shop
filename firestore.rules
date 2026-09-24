@@ -76,5 +76,14 @@ service cloud.firestore {
         );
       allow update, delete: if request.auth != null;
     }
+
+    // 交換區：賣家在後台列出「我要用 A 換 B」這種一對一交換配對（純展示用），
+    // 所有人都能看，只有登入的管理員能新增/修改/刪除。這裡完全不涉及買家送出任何資料——
+    // 買家看到想交換的配對，是直接私訊賣家 Discord 談，不是透過網站送出申請，
+    // 所以不需要像訂單、競標那樣開放「沒登入也能新增」的特例。
+    match /exchangeItems/{itemId} {
+      allow read: if true;
+      allow create, update, delete: if request.auth != null;
+    }
   }
 }
