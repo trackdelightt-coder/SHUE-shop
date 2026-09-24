@@ -1058,7 +1058,6 @@ function buildExchangeCard(pair) {
   const qty = pair.quantity !== undefined && pair.quantity !== null && pair.quantity !== "" ? Number(pair.quantity) : null;
 
   card.innerHTML = `
-    <div class="ribbon-exchange">交換區</div>
     <div class="body">
       <div class="exchange-pair-row">
         <div class="exchange-pair-side">
