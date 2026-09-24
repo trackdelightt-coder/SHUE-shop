@@ -148,7 +148,7 @@ onAuthStateChanged(auth, (user) => {
 async function showAdmin() {
   document.getElementById("loginView").style.display = "none";
   document.getElementById("adminView").style.display = "block";
-  await Promise.all([loadItems(), loadSeries(), loadAuctions()]);
+  await Promise.all([loadItems(), loadSeries(), loadAuctions(), loadExchangeItems()]);
   await loadTaxonomy();
   refreshTaxonomyUI();
 }
@@ -169,6 +169,12 @@ document.getElementById("tabAuctions").onclick = () => {
   loadAuctions();
 };
 
+document.getElementById("tabExchange").onclick = () => {
+  setActiveTab("tabExchange");
+  document.getElementById("exchangePanel").style.display = "block";
+  loadExchangeItems();
+};
+
 document.getElementById("tabOrders").onclick = () => {
   setActiveTab("tabOrders");
   document.getElementById("ordersPanel").style.display = "block";
@@ -182,12 +188,13 @@ document.getElementById("tabSettings").onclick = () => {
 };
 
 function setActiveTab(activeId) {
-  ["tabItems", "tabSeries", "tabAuctions", "tabOrders", "tabSettings"].forEach((id) => {
+  ["tabItems", "tabSeries", "tabAuctions", "tabExchange", "tabOrders", "tabSettings"].forEach((id) => {
     document.getElementById(id).classList.toggle("active", id === activeId);
   });
   document.getElementById("itemsPanel").style.display = activeId === "tabItems" ? "block" : "none";
   document.getElementById("seriesPanel").style.display = activeId === "tabSeries" ? "block" : "none";
   document.getElementById("auctionsPanel").style.display = activeId === "tabAuctions" ? "block" : "none";
+  document.getElementById("exchangePanel").style.display = activeId === "tabExchange" ? "block" : "none";
   document.getElementById("ordersPanel").style.display = activeId === "tabOrders" ? "block" : "none";
   document.getElementById("settingsPanel").style.display = activeId === "tabSettings" ? "block" : "none";
 }
@@ -566,6 +573,138 @@ async function saveAuction() {
 document.getElementById("saveAuctionBtn")?.addEventListener("click", saveAuction);
 document.getElementById("clearAuctionBtn")?.addEventListener("click", clearAuctionForm);
 
+// ---------- 交換區（賣家列出「我要用 A 換 B」的一對一交換配對，純展示用） ----------
+let ALL_EXCHANGE_ITEMS = [];
+
+async function loadExchangeItems() {
+  // 一樣要包 try/catch：這是全新加上去的功能，賣家的 Firestore 規則要自己貼上去才會生效，
+  // 貼上去之前讀取 exchangeItems 會被規則擋下來噴權限錯誤。這個函式會跟 loadItems()／
+  // loadAuctions() 一起在 showAdmin() 用 Promise.all 執行，沒接住錯誤會拖累後面
+  // 分類/標籤管理沒機會執行到（913 那次的教訓，這裡先直接照做，不要重蹈覆轍）。
+  try {
+    const snap = await getDocs(collection(db, "exchangeItems"));
+    ALL_EXCHANGE_ITEMS = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => Number(b.sortOrder || 0) - Number(a.sortOrder || 0));
+  } catch (err) {
+    console.error("[Firestore] 讀取交換區失敗（可能是規則還沒開放）:", err);
+    ALL_EXCHANGE_ITEMS = [];
+  }
+  renderExchangeItemsAdmin();
+}
+
+function renderExchangeItemsAdmin() {
+  const tbody = document.getElementById("exchangeItemsTbody");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  if (ALL_EXCHANGE_ITEMS.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);">還沒有交換配對</td></tr>';
+    return;
+  }
+  ALL_EXCHANGE_ITEMS.forEach((pair) => {
+    const qtyText = pair.quantity !== undefined && pair.quantity !== null && pair.quantity !== "" ? pair.quantity : "-";
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>
+        <img src="${pair.giveImage || PLACEHOLDER_IMG}" alt="${pair.giveName || ""}" style="width:52px;height:40px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:6px;" />
+        ${pair.giveName || ""}
+      </td>
+      <td>
+        <img src="${pair.wantImage || PLACEHOLDER_IMG}" alt="${pair.wantName || ""}" style="width:52px;height:40px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:6px;" />
+        ${pair.wantName || ""}
+      </td>
+      <td>${qtyText}</td>
+      <td>${pair.active === false ? "已下架" : "開放中"}</td>
+      <td class="row-actions"><button class="edit">編輯</button><button class="toggle">${pair.active === false ? "上架" : "下架"}</button><button class="del">刪除</button></td>
+    `;
+    row.querySelectorAll("img").forEach((img) => {
+      img.onerror = () => { img.onerror = null; img.src = PLACEHOLDER_IMG; };
+    });
+    row.querySelector(".edit").onclick = () => fillExchangeItemForm(pair);
+    row.querySelector(".toggle").onclick = async () => {
+      try {
+        await updateDoc(doc(db, "exchangeItems", pair.id), { active: pair.active === false });
+        loadExchangeItems();
+      } catch (err) {
+        alert("狀態切換失敗：" + (err && err.message ? err.message : err));
+      }
+    };
+    row.querySelector(".del").onclick = async () => {
+      if (!confirm(`確定刪除「${pair.giveName} ⇄ ${pair.wantName}」這組交換配對嗎？`)) return;
+      try {
+        await deleteDoc(doc(db, "exchangeItems", pair.id));
+        loadExchangeItems();
+      } catch (err) {
+        alert("刪除失敗：" + (err && err.message ? err.message : err));
+      }
+    };
+    tbody.appendChild(row);
+  });
+}
+
+function fillExchangeItemForm(pair) {
+  document.getElementById("exchangeItemId").value = pair.id;
+  document.getElementById("eGiveName").value = pair.giveName || "";
+  document.getElementById("eGiveImage").value = pair.giveImage || "";
+  document.getElementById("eGiveNote").value = pair.giveNote || "";
+  document.getElementById("eWantName").value = pair.wantName || "";
+  document.getElementById("eWantImage").value = pair.wantImage || "";
+  document.getElementById("eWantNote").value = pair.wantNote || "";
+  document.getElementById("eQuantity").value = pair.quantity ?? "";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function clearExchangeItemForm() {
+  document.getElementById("exchangeItemId").value = "";
+  document.getElementById("eGiveName").value = "";
+  document.getElementById("eGiveImage").value = "";
+  document.getElementById("eGiveNote").value = "";
+  document.getElementById("eWantName").value = "";
+  document.getElementById("eWantImage").value = "";
+  document.getElementById("eWantNote").value = "";
+  document.getElementById("eQuantity").value = "";
+}
+
+async function saveExchangeItem() {
+  const id = document.getElementById("exchangeItemId").value;
+  const giveName = document.getElementById("eGiveName").value.trim();
+  const wantName = document.getElementById("eWantName").value.trim();
+  if (!giveName || !wantName) {
+    alert("請填寫「我要用這個」跟「換這個」的名稱");
+    return;
+  }
+  const quantityRaw = document.getElementById("eQuantity").value;
+  const payload = {
+    giveName,
+    giveImage: document.getElementById("eGiveImage").value.trim(),
+    giveNote: document.getElementById("eGiveNote").value.trim(),
+    wantName,
+    wantImage: document.getElementById("eWantImage").value.trim(),
+    wantNote: document.getElementById("eWantNote").value.trim(),
+    // 可交換數量是選填的：留空就存空字串，買家頁面看到空字串／undefined 就不顯示這一行。
+    quantity: quantityRaw === "" ? "" : Number(quantityRaw),
+  };
+  try {
+    if (id) {
+      await updateDoc(doc(db, "exchangeItems", id), payload);
+    } else {
+      await addDoc(collection(db, "exchangeItems"), {
+        ...payload,
+        active: true,
+        sortOrder: Date.now(),
+      });
+    }
+  } catch (err) {
+    alert("儲存失敗：" + (err && err.message ? err.message : err));
+    return;
+  }
+  clearExchangeItemForm();
+  loadExchangeItems();
+}
+
+document.getElementById("saveExchangeItemBtn")?.addEventListener("click", saveExchangeItem);
+document.getElementById("clearExchangeItemBtn")?.addEventListener("click", clearExchangeItemForm);
+
 // 分類 / 標籤清單現在存在 Firestore（settings/taxonomy），妳可以直接在後台「分類與標籤管理」新增或刪除，
 // 不用再麻煩我改程式碼。這裡的清單只在資料庫裡還沒有任何設定時，第一次自動建立用（種子資料）。
 const DEFAULT_CATEGORY_OPTIONS = ["拍照區", "家具", "裝飾", "植物", "燈飾", "熊", "花盆", "雕像", "傳送門", "特殊"];
@@ -633,8 +772,9 @@ function renderCategoryChips() {
   TAXONOMY.categories.forEach((c) => {
     const chip = document.createElement("span");
     chip.className = "chip";
-    chip.innerHTML = `${c} <button type="button" title="刪除分類">×</button>`;
-    chip.querySelector("button").onclick = () => deleteCategory(c);
+    chip.innerHTML = `${c} <button type="button" class="rename" title="修改名稱">✎</button><button type="button" class="del" title="刪除分類">×</button>`;
+    chip.querySelector(".rename").onclick = () => renameCategory(c);
+    chip.querySelector(".del").onclick = () => deleteCategory(c);
     box.appendChild(chip);
   });
 }
@@ -650,8 +790,9 @@ function renderTagChips() {
   TAXONOMY.tags.forEach((t) => {
     const chip = document.createElement("span");
     chip.className = "chip";
-    chip.innerHTML = `${t} <button type="button" title="刪除標籤">×</button>`;
-    chip.querySelector("button").onclick = () => deleteTag(t);
+    chip.innerHTML = `${t} <button type="button" class="rename" title="修改名稱">✎</button><button type="button" class="del" title="刪除標籤">×</button>`;
+    chip.querySelector(".rename").onclick = () => renameTag(t);
+    chip.querySelector(".del").onclick = () => deleteTag(t);
     box.appendChild(chip);
   });
 }
@@ -698,6 +839,32 @@ async function deleteCategory(name) {
   refreshTaxonomyUI();
 }
 
+// 改分類名稱：不能只改清單裡顯示的文字，因為每件商品的 category 欄位存的是原本那個字串，
+// 只換清單上的名字、不連帶更新商品資料的話，畫面上分類選單看起來改好了，
+// 但原本用這個分類的商品會突然找不到自己的分類（category 欄位還是舊名稱，
+// 跟清單裡新名稱對不起來），所以這裡要一起把「目前用這個分類的所有商品」也批次改過去。
+async function renameCategory(oldName) {
+  const input = prompt(`把分類「${oldName}」改成什麼名稱？`, oldName);
+  if (input === null) return; // 按取消
+  const newName = input.trim();
+  if (!newName || newName === oldName) return;
+  if (TAXONOMY.categories.includes(newName)) {
+    alert("這個分類名稱已經存在了，換一個名字看看？");
+    return;
+  }
+  const affectedItems = ALL_ITEMS.filter((i) => i.category === oldName);
+  try {
+    await Promise.all(affectedItems.map((i) => updateDoc(doc(db, "items", i.id), { category: newName })));
+    TAXONOMY.categories = TAXONOMY.categories.map((c) => (c === oldName ? newName : c));
+    await persistTaxonomy();
+  } catch (err) {
+    alert("改名失敗：" + (err && err.message ? err.message : err));
+    return;
+  }
+  await loadItems();
+  refreshTaxonomyUI();
+}
+
 async function addTag() {
   const input = document.getElementById("newTagInput");
   const name = input.value.trim();
@@ -716,6 +883,37 @@ async function deleteTag(name) {
   if (!confirm(`確定要刪除標籤「${name}」嗎？已經有這個標籤的商品不會自動移除標籤，只是之後這個標籤不會再出現在勾選清單裡。`)) return;
   TAXONOMY.tags = TAXONOMY.tags.filter((t) => t !== name);
   await persistTaxonomy();
+  refreshTaxonomyUI();
+}
+
+// 改標籤名稱：道理跟改分類名稱一樣，商品的 tags 欄位是陣列，裡面存的也是原本的字串，
+// 要把「目前有打這個標籤的所有商品」一起批次改過去，不然商品身上會留著改名前的舊標籤字串，
+// 跟畫面上勾選清單顯示的新名稱對不起來。改名時如果這件商品剛好新舊標籤都有
+// （例如同時打了「熱門」又打了改名後才有的「熱銷」），用 Set 去重，不會變成同一個標籤打兩次。
+async function renameTag(oldName) {
+  const input = prompt(`把標籤「${oldName}」改成什麼名稱？`, oldName);
+  if (input === null) return; // 按取消
+  const newName = input.trim();
+  if (!newName || newName === oldName) return;
+  if (TAXONOMY.tags.includes(newName)) {
+    alert("這個標籤名稱已經存在了，換一個名字看看？");
+    return;
+  }
+  const affectedItems = ALL_ITEMS.filter((i) => Array.isArray(i.tags) && i.tags.includes(oldName));
+  try {
+    await Promise.all(
+      affectedItems.map((i) => {
+        const newTags = Array.from(new Set(i.tags.map((t) => (t === oldName ? newName : t))));
+        return updateDoc(doc(db, "items", i.id), { tags: newTags });
+      })
+    );
+    TAXONOMY.tags = TAXONOMY.tags.map((t) => (t === oldName ? newName : t));
+    await persistTaxonomy();
+  } catch (err) {
+    alert("改名失敗：" + (err && err.message ? err.message : err));
+    return;
+  }
+  await loadItems();
   refreshTaxonomyUI();
 }
 

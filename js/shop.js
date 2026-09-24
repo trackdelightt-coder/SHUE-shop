@@ -77,7 +77,10 @@ let CATEGORY = "全部";
 let SEARCH_KEYWORD = "";
 let ACTIVE_TAG = "全部";
 let CURRENT_PAGE = 1;
-const PAGE_SIZE = 60;
+// 每頁顯示幾件商品：原本是 60 件，手機上滑一頁要滑很久，調低到 30 件
+// 讓單頁滑動距離變短、換頁按鈕也會更常派上用場（桌機沒有另外設定更大的數字，
+// 因為 30 件對桌機來說也是常見、不會太少的頁面商品量，維持前後台邏輯單純一致）。
+const PAGE_SIZE = 30;
 // 同一筆訂單只能用一種付款方式（糖果 或 現金），所以用全域變數記錄目前選的付款方式
 let PAYMENT_METHOD = localStorage.getItem("mstar_pay_method") || "糖果";
 // 家具要放在哪個角色身上（男角／女角）
@@ -311,6 +314,8 @@ function openSeries(seriesId) {
     if (saleSectionOnSeries) saleSectionOnSeries.style.display = "none";
     const auctionSectionOnSeries = document.getElementById("auctionSection");
     if (auctionSectionOnSeries) auctionSectionOnSeries.style.display = "none";
+    const exchangeSectionOnSeries = document.getElementById("exchangeSection");
+    if (exchangeSectionOnSeries) exchangeSectionOnSeries.style.display = "none";
   }
   renderFilters();
   renderGrid();
@@ -333,6 +338,7 @@ function closeSpecialView() {
   renderGiftSection();
   renderSaleSection();
   renderAuctionSection();
+  renderExchangeSection();
 }
 
 // 贈品專區按「查看更多」：把下面商品清單切成只顯示贈品商品，並顯示返回鍵。
@@ -355,6 +361,8 @@ function openGiftView() {
   if (saleSectionOnGiftView) saleSectionOnGiftView.style.display = "none";
   const auctionSectionOnGiftView = document.getElementById("auctionSection");
   if (auctionSectionOnGiftView) auctionSectionOnGiftView.style.display = "none";
+  const exchangeSectionOnGiftView = document.getElementById("exchangeSection");
+  if (exchangeSectionOnGiftView) exchangeSectionOnGiftView.style.display = "none";
   renderFilters();
   renderGrid();
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1017,6 +1025,97 @@ function renderAuctionSection() {
   visibleAuctions.forEach((auction) => grid.appendChild(buildAuctionCard(auction)));
 }
 
+// ---------- 交換區（賣家列出「我要用 A 換 B」的一對一交換配對）----------
+// 這個純粹是展示用的清單，不是線上送出申請的功能：賣家在後台列出手上有什麼（give）、
+// 想換什麼（want）、還有幾個可以換（quantity），買家看到想換的配對，
+// 直接私訊賣家 Discord 談，不會透過網站送出任何資料，系統這裡完全不用處理
+// 「買家填了什麼資料」這件事，單純跟商品清單一樣是唯讀的展示。
+let EXCHANGE_ITEMS = [];
+
+async function loadExchangeItems() {
+  // 這裡也要包 try/catch：規則如果還沒開放 exchangeItems 這個集合（例如剛加上這個功能、
+  // 賣家還沒把新的 Firestore 規則貼上去），讀取會被擋下來噴權限錯誤。這個函式是跟
+  // loadItems()/loadAuctions() 一起在初始化流程執行的，沒接住錯誤會拖累後面其他區塊
+  // 沒機會執行（913 那次「分類管理不見了」就是這個原因），所以一定要接住。
+  try {
+    const snap = await getDocs(collection(db, "exchangeItems"));
+    EXCHANGE_ITEMS = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => Number(b.sortOrder || 0) - Number(a.sortOrder || 0));
+  } catch (err) {
+    console.error("[Firestore] 讀取交換區失敗（可能是規則還沒開放）:", err);
+    EXCHANGE_ITEMS = [];
+  }
+  renderExchangeSection();
+}
+
+function buildExchangeCard(pair) {
+  const card = document.createElement("div");
+  card.className = "card exchange-card";
+
+  const giveImg = pair.giveImage || PLACEHOLDER_IMG;
+  const wantImg = pair.wantImage || PLACEHOLDER_IMG;
+  const qty = pair.quantity !== undefined && pair.quantity !== null && pair.quantity !== "" ? Number(pair.quantity) : null;
+
+  card.innerHTML = `
+    <div class="ribbon-exchange">交換區</div>
+    <div class="body">
+      <div class="exchange-pair-row">
+        <div class="exchange-pair-side">
+          <div class="exchange-pair-label">我要用下圖</div>
+          <div class="exchange-pair-img-wrap">
+            <img class="exchange-give-img" src="${giveImg}" alt="${escapeHtml(pair.giveName || "")}" />
+            ${pair.giveNote ? `<div class="exchange-pair-tag">${escapeHtml(pair.giveNote)}</div>` : ""}
+          </div>
+          <div class="exchange-pair-name">${escapeHtml(pair.giveName || "")}</div>
+        </div>
+        <div class="exchange-pair-arrow">⇄</div>
+        <div class="exchange-pair-side">
+          <div class="exchange-pair-label">換這個</div>
+          <div class="exchange-pair-img-wrap">
+            <img class="exchange-want-img" src="${wantImg}" alt="${escapeHtml(pair.wantName || "")}" />
+            ${pair.wantNote ? `<div class="exchange-pair-tag">${escapeHtml(pair.wantNote)}</div>` : ""}
+          </div>
+          <div class="exchange-pair-name">${escapeHtml(pair.wantName || "")}</div>
+        </div>
+      </div>
+      ${qty !== null ? `<div class="exchange-qty">可交換 ${qty}</div>` : ""}
+      <div class="exchange-contact-note">若要交換請私訊我 Discord</div>
+    </div>
+  `;
+
+  const giveImgEl = card.querySelector(".exchange-give-img");
+  giveImgEl.onerror = () => { giveImgEl.onerror = null; giveImgEl.src = PLACEHOLDER_IMG; };
+  giveImgEl.onclick = () => openImageLightbox(giveImgEl.src, pair.giveName);
+  const wantImgEl = card.querySelector(".exchange-want-img");
+  wantImgEl.onerror = () => { wantImgEl.onerror = null; wantImgEl.src = PLACEHOLDER_IMG; };
+  wantImgEl.onclick = () => openImageLightbox(wantImgEl.src, pair.wantName);
+
+  return card;
+}
+
+function renderExchangeSection() {
+  const section = document.getElementById("exchangeSection");
+  const grid = document.getElementById("exchangeGrid");
+  if (!section || !grid) return;
+
+  // 跟特價區、競標區一樣：正在看系列頁或贈品「查看更多」全部列表時先不要蓋回去。
+  if (ACTIVE_SERIES_ID || ACTIVE_GIFT_VIEW) {
+    section.style.display = "none";
+    return;
+  }
+
+  const visiblePairs = EXCHANGE_ITEMS.filter((i) => i.active !== false);
+  if (visiblePairs.length === 0) {
+    section.style.display = "none";
+    grid.innerHTML = "";
+    return;
+  }
+  section.style.display = "block";
+  grid.innerHTML = "";
+  visiblePairs.forEach((pair) => grid.appendChild(buildExchangeCard(pair)));
+}
+
 // ---------- 贈品專區 ----------
 // 後台可以隨時開關；有開、而且至少有一件商品被標記「可作為贈品」時才會顯示。
 // 贈品區的商品卡片可以直接加，但加進去的是免費贈品，不是正常購買。
@@ -1534,7 +1633,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closeImageLightbox();
 });
 document.getElementById("backToTopBtn")?.addEventListener("click", () => window.scrollTo({top:0,behavior:"smooth"}));
-Promise.all([loadItems(), loadSeries(), loadAuctions()]);
+Promise.all([loadItems(), loadSeries(), loadAuctions(), loadExchangeItems()]);
 loadTaxonomy();
 // 每 30 秒重新讀一次競標資料（讓「目前價格／得標人」跟其他人同步），
 // 每秒重畫一次倒數計時文字（不用重新打資料庫，只是純粹更新畫面上的「剩 X 分 X 秒」文字）。
@@ -1561,6 +1660,9 @@ function refreshItemsIfStale() {
   if (now - lastItemsRefreshAt < 3000) return; // 3 秒內剛讀過就不用重複讀
   lastItemsRefreshAt = now;
   loadItems();
+  // 交換區的收購清單跟商品是同一類「放久會變舊」的資料，一起同步，
+  // 避免買家切回分頁時看到已經停止收購的品項還能送出申請。
+  loadExchangeItems();
 }
 setInterval(refreshItemsIfStale, 30000);
 document.addEventListener("visibilitychange", () => {
