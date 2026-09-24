@@ -1389,23 +1389,9 @@ tr:hover td { background: rgba(255,255,255,.018); }
 .exchange-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; align-items: start; }
 
 .exchange-card { padding: 14px; }
+/* 上面區塊標題已經寫過「交換區」了，卡片裡不再重複放一個一樣的小標籤，
+   直接把「我要用下圖／換這個」這排放在卡片最上面即可。 */
 .exchange-card .body { padding: 0; }
-
-/* 小圓角徽章，取代其他區塊（特價/競標）用的斜角緞帶——這個卡片上下已經排了不少東西，
-   斜角緞帶會蓋到圖片，改用一個安分待在左上角的小標籤即可。 */
-.ribbon-exchange {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: 10px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: rgba(85, 230, 210, 0.12);
-  border: 1px solid rgba(85, 230, 210, 0.3);
-  color: var(--teal);
-  font-weight: 900;
-  font-size: 11px;
-}
 
 .exchange-pair-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 10px; }
 .exchange-pair-side { flex: 1 1 0; min-width: 0; text-align: center; }
