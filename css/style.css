@@ -1375,6 +1375,92 @@ tr:hover td { background: rgba(255,255,255,.018); }
   .auction-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 }
 
+/* ===== 交換區（賣家列出「我要用 A 換 B」的一對一交換配對，純展示用，不收買家資料） ===== */
+.exchange-section {
+  max-width: 1800px;
+  margin: 0 auto 22px;
+  padding: 18px 40px;
+  border: 1px solid rgba(85, 230, 210, 0.25);
+  border-radius: 16px;
+  background: linear-gradient(160deg, rgba(85, 230, 210, 0.06), #0b0b0f 55%);
+}
+.exchange-section-heading h2 { margin: 0 0 6px; color: var(--teal); }
+.exchange-section-note { margin: 0 0 14px; font-size: 12.5px; line-height: 1.7; color: var(--muted); }
+.exchange-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; align-items: start; }
+
+.exchange-card { padding: 14px; }
+.exchange-card .body { padding: 0; }
+
+/* 小圓角徽章，取代其他區塊（特價/競標）用的斜角緞帶——這個卡片上下已經排了不少東西，
+   斜角緞帶會蓋到圖片，改用一個安分待在左上角的小標籤即可。 */
+.ribbon-exchange {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(85, 230, 210, 0.12);
+  border: 1px solid rgba(85, 230, 210, 0.3);
+  color: var(--teal);
+  font-weight: 900;
+  font-size: 11px;
+}
+
+.exchange-pair-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 10px; }
+.exchange-pair-side { flex: 1 1 0; min-width: 0; text-align: center; }
+.exchange-pair-label { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+.exchange-pair-img-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #121217;
+  border: 1px solid var(--border);
+}
+.exchange-pair-img-wrap img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; }
+.exchange-pair-tag {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 3px 4px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 10px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exchange-pair-name { margin-top: 6px; font-size: 12.5px; font-weight: 800; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exchange-pair-arrow { flex: 0 0 auto; font-size: 20px; font-weight: 900; color: var(--teal); }
+
+.exchange-qty { text-align: center; font-size: 12px; font-weight: 800; color: var(--teal); margin-bottom: 4px; }
+.exchange-contact-note { text-align: center; font-size: 11.5px; color: var(--muted); }
+
+.exchange-admin-note {
+  margin: -4px 0 14px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+  padding: 10px 12px;
+  border: 1px dashed rgba(85, 230, 210, 0.3);
+  border-radius: 10px;
+  background: rgba(85, 230, 210, 0.05);
+}
+
+@media (max-width: 480px) {
+  .exchange-pair-label { font-size: 10px; }
+  .exchange-pair-arrow { font-size: 16px; }
+}
+
+@media (max-width: 860px) {
+  .exchange-section { padding: 16px 20px; }
+  .exchange-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+}
+
 /* ===== 後台：分類／標籤管理、商品標記勾選、mini badge ===== */
 .taxonomy-manage {
   display: grid;
@@ -1425,6 +1511,12 @@ tr:hover td { background: rgba(255,255,255,.018); }
   align-items: center;
   justify-content: center;
   padding: 0;
+}
+/* 改名字用的鉛筆按鈕跟刪除用的 × 按鈕放在同一顆 chip 上，顏色要分開，
+   不然改名字這種不會刪掉任何東西的動作，看起來卻是警示紅色，會讓人猶豫要不要點。 */
+.chip button.rename {
+  background: rgba(85, 230, 210, 0.16);
+  color: var(--teal);
 }
 
 .alt-stock-rows { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
