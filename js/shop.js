@@ -791,6 +791,7 @@ function buildProductCard(item, { extraClass, isGift } = {}) {
     <div class="body">
       <div class="cat">${item.category}</div>
       ${Array.isArray(item.tags) && item.tags.length ? `<div class="item-tags">${item.tags.map(t=>`<span>${t}</span>`).join("")}</div>` : ""}
+      ${item.excludeFromStoreDiscount ? '<div class="consignment-badge">🔒 代售商品</div>' : ""}
       <h3>${item.name}</h3>
       <div class="desc">${item.description || ""}</div>
       ${
