@@ -337,8 +337,8 @@
           <label>全館折扣（選填；折數＋開始／結束時間三個欄位都要填才會生效。設定時間後，時間到了會自動生效／自動恢復原價，不用手動開關。會套用在全部商品上——如果商品本身也有設定特價，全館折扣會在特價的基礎上再折一次；買家頁面上方會出現醒目橫幅提醒現在全館在打折）</label>
           <div class="discount-fields-row">
             <div>
-              <label class="sub-label">全館折數（例：輸入 85 代表打 85 折）</label>
-              <input id="fStoreDiscountPercent" type="number" min="1" max="99" placeholder="例：85" />
+              <label class="sub-label">全館折數（輸入 85 代表打 85 折；輸入個位數 1~9 也可以，例如輸入 9 系統會自動換算成「9折＝付90%」，離開欄位後會自動變成 90，不用自己乘10）</label>
+              <input id="fStoreDiscountPercent" type="number" min="1" max="99" placeholder="例：85（或打9折就輸入9）" />
             </div>
             <div>
               <label class="sub-label">開始時間</label>
@@ -373,6 +373,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/admin.js?v=925-20260925-3"></script>
+  <script type="module" src="js/admin.js?v=925-20260925-4"></script>
 </body>
 </html>
