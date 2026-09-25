@@ -1752,10 +1752,23 @@ function getStoreDiscountFieldsFromForm() {
     return { storeDiscountPercent: null, storeDiscountStart: null, storeDiscountEnd: null };
   }
   return {
-    storeDiscountPercent: Number(percentRaw),
+    storeDiscountPercent: normalizeStoreDiscountPercent(Number(percentRaw)),
     storeDiscountStart: startRaw,
     storeDiscountEnd: endRaw,
   };
+}
+
+// 中文口語「打幾折」的習慣：講「9折」意思是付 90%，不是付 9%——但這個欄位本來的規則是
+// 「輸入的數字直接就是要付的百分比」（例如輸入 85 代表 85 折＝付 85%）。兩種講法在輸入
+// 個位數的時候會對不起來：照口語直覺打「9」（想打9折）會被系統當成「付9%」，等於多算了
+// 91% 的折扣，全店商品都會變得離譜便宜（真實發生過一次，才加這個保護）。
+// 這裡把 1～9 的個位數自動換算成對應的十位數（9 -> 90），符合大家實際打字的直覺；
+// 10～99 維持原樣（例如 85 還是 85折），不會被誤判。
+function normalizeStoreDiscountPercent(percent) {
+  if (Number.isFinite(percent) && percent >= 1 && percent <= 9) {
+    return percent * 10;
+  }
+  return percent;
 }
 
 // 跟特價欄位的 updateSaleStatusHint 一樣，即時顯示「現在算不算全館折扣中」，
@@ -1781,20 +1794,37 @@ function updateStoreDiscountStatusHint() {
     hintEl.classList.remove("active");
     return;
   }
+  // 特別把「等於付幾%、100元變幾元」講清楚，避免只看到「幾折」兩個字又會錯意
+  // （之前就發生過打算打9折、結果看到「9折」以為沒問題，其實系統已經換算成90折存起來了）。
+  const payExample = Math.round(100 * (storeDiscountPercent / 100));
+  const priceNote = `等於付 ${storeDiscountPercent}%，100元的東西會變成 ${payExample}元`;
   const now = new Date();
   if (now < start) {
-    hintEl.textContent = `目前狀態：尚未開始（將於 ${start.toLocaleString("zh-TW")} 開始全館 ${storeDiscountPercent} 折）`;
+    hintEl.textContent = `目前狀態：尚未開始（將於 ${start.toLocaleString("zh-TW")} 開始全館 ${storeDiscountPercent} 折，${priceNote}）`;
     hintEl.classList.remove("active");
   } else if (now > end) {
     hintEl.textContent = `目前狀態：已結束（${end.toLocaleString("zh-TW")} 已過期，買家現在看到的是原價）`;
     hintEl.classList.remove("active");
   } else {
-    hintEl.textContent = `目前狀態：全館 ${storeDiscountPercent} 折進行中！將於 ${end.toLocaleString("zh-TW")} 自動恢復原價`;
+    hintEl.textContent = `目前狀態：全館 ${storeDiscountPercent} 折進行中！${priceNote}，將於 ${end.toLocaleString("zh-TW")} 自動恢復原價`;
     hintEl.classList.add("active");
   }
 }
 ["fStoreDiscountPercent", "fStoreDiscountStart", "fStoreDiscountEnd"].forEach((id) => {
   document.getElementById(id)?.addEventListener("input", updateStoreDiscountStatusHint);
+});
+// 離開折數欄位時，如果填的是個位數（1~9，口語「幾折」的打法），直接把欄位裡的數字
+// 校正成換算後的十位數（例如打「9」離開欄位後自動變成「90」），讓妳自己也能親眼看到
+// 系統實際存的是哪個數字，不會誤以為欄位上顯示的「9」跟「9折＝付90%」是同一件事。
+document.getElementById("fStoreDiscountPercent")?.addEventListener("blur", () => {
+  const el = document.getElementById("fStoreDiscountPercent");
+  const raw = el.value.trim();
+  if (!raw) return;
+  const normalized = normalizeStoreDiscountPercent(Number(raw));
+  if (Number.isFinite(normalized) && String(normalized) !== raw) {
+    el.value = normalized;
+    updateStoreDiscountStatusHint();
+  }
 });
 
 async function loadSettings() {
