@@ -106,14 +106,46 @@ function savePayMethod() {
   localStorage.setItem("mstar_pay_method", PAYMENT_METHOD);
 }
 
-function priceFor(item, paymentMethod) {
-  if (isOnSale(item)) {
-    return paymentMethod === "糖果" ? Number(item.salePriceCandy) : Number(item.salePriceCash);
-  }
-  return paymentMethod === "糖果" ? item.priceCandy : item.priceCash;
+// 全館折扣：後台商店設定裡填「折數」＋「開始／結束時間」，時間到了自動生效／自動恢復原價，
+// 跟特價區同一套邏輯、不用手動開關。會套用在全部商品上，如果商品本身也有設定特價，
+// 全館折扣是在特價的基礎上「再折一次」（先套用特價，再套用全館折扣），符合「全部都要打折」的需求。
+let STORE_DISCOUNT = { percent: null, start: null, end: null, bannerImage: "" };
+
+function isStoreDiscountActive() {
+  const percent = Number(STORE_DISCOUNT.percent);
+  // 折數要是 1~99 之間的數字才有意義：<=0 或 >=100 都不是「打折」，一律當作沒設定，
+  // 這樣後台萬一打錯數字，最多就是折扣沒生效，不會算出負數或高於原價的怪價格。
+  if (!Number.isFinite(percent) || percent <= 0 || percent >= 100) return false;
+  if (!STORE_DISCOUNT.start || !STORE_DISCOUNT.end) return false;
+  const start = new Date(STORE_DISCOUNT.start);
+  const end = new Date(STORE_DISCOUNT.end);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return false;
+  const now = new Date();
+  return now >= start && now <= end;
 }
 
-// 商品原本（沒特價時）的價格，特價卡片上要拿來劃掉顯示用的。
+function storeDiscountMultiplier() {
+  return isStoreDiscountActive() ? Number(STORE_DISCOUNT.percent) / 100 : 1;
+}
+
+function priceFor(item, paymentMethod) {
+  const base = isOnSale(item)
+    ? paymentMethod === "糖果"
+      ? Number(item.salePriceCandy)
+      : Number(item.salePriceCash)
+    : paymentMethod === "糖果"
+      ? item.priceCandy
+      : item.priceCash;
+  // 代售商品：價格是別人訂的，不能被全館折扣自動改動，後台勾了「代售商品」的
+  // 商品直接跳過全館折扣，維持原價（個別特價欄位還是照舊由妳自己手動決定要不要填）。
+  if (item.excludeFromStoreDiscount) return base;
+  // 像「5糖」這種本來就很便宜的商品，如果全館折扣打得很深（例如全館1折），
+  // 四捨五入後有可能會變成 0，等於買家沒付錢就能拿走商品——這裡保底至少要 1，
+  // 確保打折後的商品一定還是要花錢買，不會意外變成免費贈品。
+  return Math.max(1, Math.round(base * storeDiscountMultiplier()));
+}
+
+// 商品原本（沒特價、沒全館折扣時）的價格，特價／全館折扣卡片上要拿來劃掉顯示用的。
 function originalPriceFor(item, paymentMethod) {
   return paymentMethod === "糖果" ? item.priceCandy : item.priceCash;
 }
@@ -463,6 +495,54 @@ function renderHeroTrustRow(items) {
   });
 }
 
+// 全館折扣橫幅：放在買家頁面最上方，只要現在算是「全館折扣中」就顯示，
+// 內容跟倒數都是從 STORE_DISCOUNT（loadAnnouncement 讀回來的設定）即時算出來。
+// 後台有填「橫幅圖片網址」的話，直接顯示那張圖片（賣家自己設計整張橫幅），
+// 蓋掉系統自動產生的文字＋倒數版本；圖片網址失效（載入失敗）就自動退回文字版本，
+// 不會讓買家看到一個壞掉的圖示。
+function renderStoreDiscountBanner() {
+  const banner = document.getElementById("storeDiscountBanner");
+  if (!banner) return;
+  if (!isStoreDiscountActive()) {
+    banner.style.display = "none";
+    return;
+  }
+  const end = new Date(STORE_DISCOUNT.end);
+  const imgEl = banner.querySelector(".store-discount-banner-img");
+  const textEl = banner.querySelector(".store-discount-banner-text");
+  const countdownEl = banner.querySelector(".store-discount-banner-countdown");
+  const bannerImage = (STORE_DISCOUNT.bannerImage || "").trim();
+
+  // 折數用單獨的 <span> 包起來放大顯示（isStoreDiscountActive() 已經檢查過
+  // percent 是 1~99 之間的有效數字，這裡塞進 innerHTML 是安全的，不是使用者可任意輸入的文字）。
+  textEl.innerHTML = `🎉 全館 <span class="store-discount-banner-percent">${STORE_DISCOUNT.percent} 折</span> 優惠進行中！`;
+  countdownEl.dataset.end = end.toISOString();
+  countdownEl.textContent = formatCountdownText(end);
+
+  const showTextVersion = () => {
+    imgEl.style.display = "none";
+    textEl.style.display = "";
+    countdownEl.style.display = "";
+    banner.classList.remove("has-image");
+    banner.style.display = "flex";
+  };
+
+  if (bannerImage) {
+    imgEl.onerror = () => {
+      imgEl.onerror = null;
+      showTextVersion();
+    };
+    imgEl.src = bannerImage;
+    imgEl.style.display = "block";
+    textEl.style.display = "none";
+    countdownEl.style.display = "none";
+    banner.classList.add("has-image");
+    banner.style.display = "block";
+  } else {
+    showTextVersion();
+  }
+}
+
 async function loadAnnouncement() {
   try {
     const snap = await getDoc(doc(db, "settings", "main"));
@@ -475,6 +555,19 @@ async function loadAnnouncement() {
     } else {
       box.style.display = "none";
     }
+
+    // 全館折扣：讀回設定後更新 STORE_DISCOUNT，並且重畫橫幅＋商品格子＋特價區——
+    // 因為 loadItems() 跟 loadAnnouncement() 是同時平行呼叫的，商品格子有可能在
+    // 這裡讀到全館折扣設定之前就已經畫好了，這裡要再重畫一次才不會漏套用折扣。
+    STORE_DISCOUNT = {
+      percent: data.storeDiscountPercent ?? null,
+      start: data.storeDiscountStart || null,
+      end: data.storeDiscountEnd || null,
+      bannerImage: data.storeDiscountBannerImage || "",
+    };
+    renderStoreDiscountBanner();
+    renderGrid();
+    renderSaleSection();
 
     // 首圖標題／副標題：後台有填就用後台的內容（用 textContent 塞值，配合 CSS 的
     // white-space: pre-line 讓換行照樣生效，不會有 innerHTML 注入風險），沒填就用預設文案。
@@ -675,15 +768,24 @@ function buildProductCard(item, { extraClass, isGift } = {}) {
     : null;
   let selectedColor = hasVariants ? (firstInStockVariant || item.colorVariants[0]).color : null;
   const outOfStock = isOutOfStock(item, selectedColor);
-  // 贈品專區的商品本來就免費，不套用特價（特價/劃線價對贈品沒有意義）。
+  // 贈品專區的商品本來就免費，不套用特價／全館折扣（特價/劃線價對贈品沒有意義）。
   const onSale = !isGift && isOnSale(item);
   const saleEndDate = onSale ? new Date(item.saleEnd) : null;
+  // 全館折扣：跟特價可以疊加——如果商品本身也在特價中，卡片一樣只顯示「特價」緞帶
+  // （避免同一張卡片同時貼兩張緞帶太亂），但劃線價格＋折扣後價格還是會正確反映疊加後的金額。
+  // 代售商品（excludeFromStoreDiscount）完全跳過全館折扣，卡片上不會顯示折扣緞帶或劃線價，
+  // 買家看到的就是商品原本的價格，不會被誤以為也在打折。
+  const storeDiscountActive = !isGift && !item.excludeFromStoreDiscount && isStoreDiscountActive();
+  const showStrike = onSale || storeDiscountActive;
+  // 倒數／截止時間：優先顯示商品自己的特價截止時間，只有全館折扣、商品本身沒特價時，
+  // 才顯示全館折扣的截止時間——每張卡片只顯示跟它有關的那個時間，不會同時顯示兩個造成混淆。
+  const countdownEndDate = onSale ? saleEndDate : storeDiscountActive ? new Date(STORE_DISCOUNT.end) : null;
 
   card.innerHTML = `
     <div class="card-img-wrap">
       <img src="${imageFor(item, selectedColor)}" alt="${escapeHtml(item.name)}" class="${outOfStock ? "img-soldout" : ""}" />
       ${item.isNew ? '<div class="ribbon-new">NEW</div>' : ""}
-      ${onSale ? '<div class="ribbon-sale">特價</div>' : ""}
+      ${onSale ? '<div class="ribbon-sale">特價</div>' : storeDiscountActive ? `<div class="ribbon-sale">全館${escapeHtml(String(STORE_DISCOUNT.percent))}折</div>` : ""}
       <div class="stamp-soldout" style="${outOfStock ? "" : "display:none;"}">已售完</div>
     </div>
     <div class="body">
@@ -705,17 +807,17 @@ function buildProductCard(item, { extraClass, isGift } = {}) {
         <span class="price${isGift ? " gift-price" : ""}">${
           isGift
             ? "🎁 贈品（免費）"
-            : onSale
+            : showStrike
               ? `<span class="price-sale-wrap"><span class="price-original">${formatPrice(PAYMENT_METHOD, originalPriceFor(item, PAYMENT_METHOD))}</span><span class="price-sale">${formatPrice(PAYMENT_METHOD, priceFor(item, PAYMENT_METHOD))}</span></span>`
               : formatPrice(PAYMENT_METHOD, priceFor(item, PAYMENT_METHOD))
         }</span>
         <span class="stock">${outOfStock ? "已售完" : "庫存 " + stockFor(item, selectedColor)}</span>
       </div>
       ${
-        onSale
+        countdownEndDate
           ? `<div class="sale-time-row">
-              <span class="sale-end-text">特價至 ${formatSaleEndText(saleEndDate)}</span>
-              <span class="sale-countdown" data-end="${saleEndDate.toISOString()}">${formatCountdownText(saleEndDate)}</span>
+              <span class="sale-end-text">${onSale ? "特價至" : "優惠至"} ${formatSaleEndText(countdownEndDate)}</span>
+              <span class="sale-countdown" data-end="${countdownEndDate.toISOString()}">${formatCountdownText(countdownEndDate)}</span>
             </div>`
           : ""
       }
@@ -994,12 +1096,14 @@ function updateCountdowns() {
     }
     el.textContent = formatCountdownText(endDate);
   });
-  // 有特價剛好倒數到 0：ITEMS 本身的資料沒變，只是「現在算不算特價中」這個
-  // 判斷結果變了，所以不用重新打資料庫，直接把畫面重畫一次就會自動變回原價、
-  // 從特價區消失（isOnSale() 每次都是即時算現在時間，不用額外處理）。
+  // 有特價／全館折扣剛好倒數到 0：ITEMS 本身的資料沒變，只是「現在算不算特價中／
+  // 全館折扣中」這個判斷結果變了，所以不用重新打資料庫，直接把畫面重畫一次就會
+  // 自動變回原價、從特價區消失、橫幅收起來（isOnSale()／isStoreDiscountActive()
+  // 每次都是即時算現在時間，不用額外處理）。
   if (anySaleEnded) {
     renderGrid();
     renderSaleSection();
+    renderStoreDiscountBanner();
   }
 }
 

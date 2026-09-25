@@ -1008,6 +1008,7 @@ function renderItemsTable() {
       item.isNew ? '<span class="mini-badge new">NEW</span>' : "",
       isSoldOut ? '<span class="mini-badge soldout">已售完</span>' : "",
       item.giftEligible ? '<span class="mini-badge gift">🎁贈品</span>' : "",
+      item.excludeFromStoreDiscount ? '<span class="mini-badge consignment">🔒代售</span>' : "",
     ].join("");
     const altStockList = Array.isArray(item.stockByAlt) ? item.stockByAlt.filter((r) => r && r.alt) : [];
     const altStockHtml = altStockList.length
@@ -1440,6 +1441,7 @@ function fillForm(item) {
   document.getElementById("fDesc").value = item.description || "";
   document.getElementById("fIsNew").checked = item.isNew === true;
   document.getElementById("fGiftEligible").checked = item.giftEligible === true;
+  document.getElementById("fExcludeFromStoreDiscount").checked = item.excludeFromStoreDiscount === true;
   renderTagPicker(Array.isArray(item.tags) ? item.tags : []);
   renderColorVariantRows(Array.isArray(item.colorVariants) ? item.colorVariants : []);
   renderAltStockRows(Array.isArray(item.stockByAlt) ? item.stockByAlt : []);
@@ -1467,6 +1469,7 @@ function clearForm() {
   updateSaleStatusHint();
   document.getElementById("fIsNew").checked = false;
   document.getElementById("fGiftEligible").checked = false;
+  document.getElementById("fExcludeFromStoreDiscount").checked = false;
   renderTagPicker([]);
   renderColorVariantRows([]);
   renderAltStockRows([]);
@@ -1499,6 +1502,7 @@ async function saveItem() {
     tags: getCheckedTags(),
     isNew: document.getElementById("fIsNew").checked,
     giftEligible: document.getElementById("fGiftEligible").checked,
+    excludeFromStoreDiscount: document.getElementById("fExcludeFromStoreDiscount").checked,
     priceCandy,
     priceCash,
     stock,
@@ -1738,6 +1742,61 @@ async function deleteOrder(order) {
 }
 
 // ---------- Settings (公告) ----------
+// 全館折扣三個欄位：只有三個都填了才算有效設定，跟特價欄位（getSaleFieldsFromForm）
+// 用同一套「沒填齊就當作沒設定」邏輯，這樣就不會存出「有折數沒時間」這種殘缺資料。
+function getStoreDiscountFieldsFromForm() {
+  const percentRaw = document.getElementById("fStoreDiscountPercent").value.trim();
+  const startRaw = document.getElementById("fStoreDiscountStart").value;
+  const endRaw = document.getElementById("fStoreDiscountEnd").value;
+  if (!percentRaw || !startRaw || !endRaw) {
+    return { storeDiscountPercent: null, storeDiscountStart: null, storeDiscountEnd: null };
+  }
+  return {
+    storeDiscountPercent: Number(percentRaw),
+    storeDiscountStart: startRaw,
+    storeDiscountEnd: endRaw,
+  };
+}
+
+// 跟特價欄位的 updateSaleStatusHint 一樣，即時顯示「現在算不算全館折扣中」，
+// 方便妳自己核對折數／時間有沒有填對，不用存檔後再跑去買家頁面確認。
+function updateStoreDiscountStatusHint() {
+  const hintEl = document.getElementById("storeDiscountStatusHint");
+  if (!hintEl) return;
+  const { storeDiscountPercent, storeDiscountStart, storeDiscountEnd } = getStoreDiscountFieldsFromForm();
+  if (storeDiscountPercent == null || !storeDiscountStart || !storeDiscountEnd) {
+    hintEl.textContent = "目前狀態：沒有設定全館折扣（三個欄位都要填才會生效）";
+    hintEl.classList.remove("active");
+    return;
+  }
+  if (!Number.isFinite(storeDiscountPercent) || storeDiscountPercent <= 0 || storeDiscountPercent >= 100) {
+    hintEl.textContent = "目前狀態：折數要輸入 1～99 之間的數字（例如 85 代表打 85 折）";
+    hintEl.classList.remove("active");
+    return;
+  }
+  const start = new Date(storeDiscountStart);
+  const end = new Date(storeDiscountEnd);
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || start >= end) {
+    hintEl.textContent = "目前狀態：時間設定有誤（結束時間要晚於開始時間）";
+    hintEl.classList.remove("active");
+    return;
+  }
+  const now = new Date();
+  if (now < start) {
+    hintEl.textContent = `目前狀態：尚未開始（將於 ${start.toLocaleString("zh-TW")} 開始全館 ${storeDiscountPercent} 折）`;
+    hintEl.classList.remove("active");
+  } else if (now > end) {
+    hintEl.textContent = `目前狀態：已結束（${end.toLocaleString("zh-TW")} 已過期，買家現在看到的是原價）`;
+    hintEl.classList.remove("active");
+  } else {
+    hintEl.textContent = `目前狀態：全館 ${storeDiscountPercent} 折進行中！將於 ${end.toLocaleString("zh-TW")} 自動恢復原價`;
+    hintEl.classList.add("active");
+  }
+}
+["fStoreDiscountPercent", "fStoreDiscountStart", "fStoreDiscountEnd"].forEach((id) => {
+  document.getElementById(id)?.addEventListener("input", updateStoreDiscountStatusHint);
+});
+
 async function loadSettings() {
   const snap = await getDoc(doc(db, "settings", "main"));
   const settings = snap.exists() ? snap.data() : {};
@@ -1745,6 +1804,12 @@ async function loadSettings() {
   document.getElementById("fHeroSub").value = settings.heroSub || "";
   document.getElementById("fHeroTrust").value = settings.heroTrust || "";
   document.getElementById("fAnnouncement").value = settings.announcement || "";
+  document.getElementById("fStoreDiscountPercent").value =
+    settings.storeDiscountPercent === undefined || settings.storeDiscountPercent === null ? "" : settings.storeDiscountPercent;
+  document.getElementById("fStoreDiscountStart").value = settings.storeDiscountStart || "";
+  document.getElementById("fStoreDiscountEnd").value = settings.storeDiscountEnd || "";
+  document.getElementById("fStoreDiscountBannerImage").value = settings.storeDiscountBannerImage || "";
+  updateStoreDiscountStatusHint();
   document.getElementById("fGiftSectionEnabled").checked = settings.giftSectionEnabled === true;
   document.getElementById("fGenderFemaleOnly").checked = settings.genderFemaleOnly === true;
   document.getElementById("fPopupMessage").value = settings.popupMessage || "";
@@ -1756,6 +1821,8 @@ async function saveSettings() {
   const heroSub = document.getElementById("fHeroSub").value;
   const heroTrust = document.getElementById("fHeroTrust").value;
   const announcement = document.getElementById("fAnnouncement").value;
+  const { storeDiscountPercent, storeDiscountStart, storeDiscountEnd } = getStoreDiscountFieldsFromForm();
+  const storeDiscountBannerImage = document.getElementById("fStoreDiscountBannerImage").value.trim();
   const giftSectionEnabled = document.getElementById("fGiftSectionEnabled").checked;
   const genderFemaleOnly = document.getElementById("fGenderFemaleOnly").checked;
   const popupMessage = document.getElementById("fPopupMessage").value;
@@ -1763,7 +1830,20 @@ async function saveSettings() {
   try {
     await setDoc(
       doc(db, "settings", "main"),
-      { heroTitle, heroSub, heroTrust, announcement, giftSectionEnabled, genderFemaleOnly, popupMessage, popupEnabled },
+      {
+        heroTitle,
+        heroSub,
+        heroTrust,
+        announcement,
+        storeDiscountPercent,
+        storeDiscountStart,
+        storeDiscountEnd,
+        storeDiscountBannerImage,
+        giftSectionEnabled,
+        genderFemaleOnly,
+        popupMessage,
+        popupEnabled,
+      },
       { merge: true }
     );
     alert("設定已儲存！");
