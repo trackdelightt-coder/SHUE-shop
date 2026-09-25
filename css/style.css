@@ -463,6 +463,20 @@ img.img-soldout {
   font-weight: 700;
 }
 
+/* 代售商品標記：讓買家在商品卡片上就能直接看到「這件是代售、價格固定」，
+   不用等到結帳才發現價格跟其他商品邏輯不一樣（例如全館折扣打了但這件沒有變便宜）。 */
+.consignment-badge {
+  display: inline-block;
+  align-self: flex-start;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(85, 230, 210, 0.12);
+  color: var(--teal);
+  border: 1px solid rgba(85, 230, 210, 0.3);
+}
+
 .card h3 {
   margin: 0;
   font-size: 15px;
