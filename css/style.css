@@ -255,6 +255,70 @@ html { scroll-behavior: smooth; }
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
 }
 
+/* 全館折扣橫幅：故意用跟特價緞帶同一組暖色（橘紅漸層），但整條打滿寬度、放在最上面，
+   要讓買家一進站就看到，跟下面商店公告那種安靜的資訊框拉開差異。折數本身用 .store-discount-banner-percent
+   單獨放大＋配色，是整條橫幅裡最搶眼的東西，買家掃過去第一眼要先看到「打幾折」。 */
+.store-discount-banner {
+  max-width: 1800px;
+  margin: 18px auto 0;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: linear-gradient(135deg, #ff8a3d, #ff5566);
+  border-radius: var(--radius);
+  color: #fff;
+  font-weight: 900;
+  font-size: 16px;
+  text-align: center;
+  box-shadow: 0 8px 24px rgba(255, 85, 102, 0.4);
+}
+.store-discount-banner-percent {
+  display: inline-block;
+  font-size: 30px;
+  font-weight: 900;
+  color: var(--primary);
+  margin: 0 2px;
+  letter-spacing: 0.5px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  animation: storeDiscountPulse 1.8s ease-in-out infinite;
+}
+@keyframes storeDiscountPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+/* 用 .store-discount-banner 當前綴提高優先度，蓋掉後面 .sale-countdown 預設的橘色字
+   （橫幅底色本身就是橘紅漸層，倒數字要用白色才看得清楚，不能沿用卡片上那種橘色）。 */
+.store-discount-banner .store-discount-banner-countdown {
+  font-weight: 900;
+  font-size: 13px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+@media (max-width: 700px) {
+  .store-discount-banner { font-size: 13.5px; padding: 12px 14px; }
+  .store-discount-banner-percent { font-size: 24px; }
+}
+
+/* 後台有填「橫幅圖片網址」時，整條橫幅就是妳自己設計的圖片，
+   原本的橘紅漸層底色／留白／文字都要讓開，圖片才能滿版顯示，不會被裁切或加框。 */
+.store-discount-banner.has-image {
+  display: block;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+}
+.store-discount-banner-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius);
+}
+
 .layout {
   display: grid;
   grid-template-columns: 1fr 300px;
@@ -1056,6 +1120,23 @@ th { background: rgba(255, 255, 255, 0.045); color: var(--primary); }
   .sale-fields-row { grid-template-columns: repeat(2, 1fr); }
 }
 
+/* 全館折扣：跟特價的四欄輸入列共用同一套樣式，只是少一欄（沒有「金額」，只有折數），
+   所以另外開一個三欄版本，避免最後一欄空著看起來像沒填完。 */
+.discount-fields-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.discount-fields-row .sub-label {
+  font-size: 11px;
+  color: var(--muted);
+  display: block;
+  margin-bottom: 4px;
+}
+@media (max-width: 700px) {
+  .discount-fields-row { grid-template-columns: repeat(2, 1fr); }
+}
+
 #categoryFilter {
   padding: 10px 14px;
   background: var(--panel-light);
@@ -1714,6 +1795,7 @@ tr:hover td { background: rgba(255,255,255,.018); }
 .mini-badge.new { background: rgba(255, 85, 102, 0.18); color: #ff8fa0; }
 .mini-badge.soldout { background: rgba(255, 255, 255, 0.12); color: var(--muted); }
 .mini-badge.gift { background: rgba(255, 209, 102, 0.16); color: var(--primary); }
+.mini-badge.consignment { background: rgba(85, 230, 210, 0.16); color: var(--teal); }
 
 .order-stats { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
 .order-stat-box {
