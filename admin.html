@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>蘇蘇家具商店 - 後台管理</title>
-<link rel="stylesheet" href="css/style.css?v=924-20260924-4" />
+<link rel="stylesheet" href="css/style.css?v=925-20260925-2" />
 </head>
 <body>
   <header class="topbar">
@@ -59,6 +59,7 @@
           <div class="flag-row">
             <label><input type="checkbox" id="fIsNew" /> 🆕 新品(New)</label>
             <label><input type="checkbox" id="fGiftEligible" /> 🎁 可作為贈品</label>
+            <label><input type="checkbox" id="fExcludeFromStoreDiscount" /> 🔒 代售商品（價格固定，不套用全館折扣）</label>
           </div>
         </div>
         <div>
@@ -332,6 +333,28 @@
           <label>商店公告（會顯示在買家頁面最上方，例如營業時間、交易比例、注意事項）</label>
           <textarea id="fAnnouncement" rows="6" placeholder="例：&#10;📢 營業時間：每天 20:00-24:00&#10;💰 交易方式：可糖可T，比值1:1&#10;💬 有問題歡迎 Discord 聯繫我們"></textarea>
         </div>
+        <div>
+          <label>全館折扣（選填；折數＋開始／結束時間三個欄位都要填才會生效。設定時間後，時間到了會自動生效／自動恢復原價，不用手動開關。會套用在全部商品上——如果商品本身也有設定特價，全館折扣會在特價的基礎上再折一次；買家頁面上方會出現醒目橫幅提醒現在全館在打折）</label>
+          <div class="discount-fields-row">
+            <div>
+              <label class="sub-label">全館折數（例：輸入 85 代表打 85 折）</label>
+              <input id="fStoreDiscountPercent" type="number" min="1" max="99" placeholder="例：85" />
+            </div>
+            <div>
+              <label class="sub-label">開始時間</label>
+              <input id="fStoreDiscountStart" type="datetime-local" />
+            </div>
+            <div>
+              <label class="sub-label">結束時間</label>
+              <input id="fStoreDiscountEnd" type="datetime-local" />
+            </div>
+          </div>
+          <div id="storeDiscountStatusHint" class="sale-status-hint"></div>
+          <div style="margin-top:10px;">
+            <label class="sub-label">橫幅圖片網址（選填；留空就用系統自動產生的文字橫幅。填了的話，折扣生效時買家頁面最上方會直接顯示這張圖片，蓋掉文字版橫幅，妳可以自己設計整張橫幅的畫面）</label>
+            <input id="fStoreDiscountBannerImage" placeholder="https://..." />
+          </div>
+        </div>
         <div class="flag-row" style="padding-bottom:4px;">
           <label><input type="checkbox" id="fGiftSectionEnabled" /> 🎁 開啟贈品專區（買家頁面會顯示「贈品專區」區塊，隨時可以關掉）</label>
         </div>
@@ -350,6 +373,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/admin.js?v=924-20260924-3"></script>
+  <script type="module" src="js/admin.js?v=925-20260925-3"></script>
 </body>
 </html>
