@@ -255,43 +255,82 @@ html { scroll-behavior: smooth; }
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
 }
 
+/* 全館折扣的數字（85）跟單位（折）分別用兩款字型：85 用 Poppins（圓潤幾何感，接近
+   Century Gothic 的效果，客人要求但那套字大部分裝置沒有安裝，所以改用這個免費且效果
+   相近的替代字），折用 Noto Sans TC 黑體（取代文鼎粗黑體，同樣理由）。兩個字型檔都
+   自架在 fonts/ 資料夾裡（中文那個已經用 pyftsubset 只保留「折」一個字，944 bytes），
+   不需要連 Google 的服務，手機／電腦都會顯示一致的效果、也不會拖慢載入。 */
+@font-face {
+  font-family: "ShueBannerNum";
+  src: url("fonts/Poppins-800.woff2") format("woff2");
+  font-weight: 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "ShueBannerUnit";
+  src: url("fonts/NotoSansTC-900.woff2") format("woff2");
+  font-weight: 900;
+  font-display: swap;
+}
+
 /* 全館折扣橫幅：故意用跟特價緞帶同一組暖色（橘紅漸層），但整條打滿寬度、放在最上面，
-   要讓買家一進站就看到，跟下面商店公告那種安靜的資訊框拉開差異。折數本身用 .store-discount-banner-percent
-   單獨放大＋配色，是整條橫幅裡最搶眼的東西，買家掃過去第一眼要先看到「打幾折」。 */
+   要讓買家一進站就看到，跟下面商店公告那種安靜的資訊框拉開差異。
+   「全館／85／折／優惠進行中／倒數」全部塞在同一段文字（.store-discount-banner-text）
+   裡、同一排同一條基準線對齊，靠 line-height 刻意壓得比 85 的字級矮，讓 85 自然突破
+   橫幅底色的上下邊緣（破格），但視覺上仍然是同一排，不會跟其他字分成兩層。
+   底色是方形直角，不用圓角。 */
 .store-discount-banner {
   max-width: 1800px;
   margin: 18px auto 0;
-  padding: 16px 20px;
+  padding: 10px 20px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 12px;
+  overflow: visible;
   background: linear-gradient(135deg, #ff8a3d, #ff5566);
-  border-radius: var(--radius);
+  border-radius: 0;
   color: #fff;
   font-weight: 900;
   font-size: 16px;
   text-align: center;
   box-shadow: 0 8px 24px rgba(255, 85, 102, 0.4);
 }
-.store-discount-banner-percent {
+.store-discount-banner-text {
+  display: inline;
+  line-height: 22px;
+}
+.store-discount-banner-badge-num {
+  font-family: "ShueBannerNum", sans-serif;
   display: inline-block;
-  font-size: 30px;
-  font-weight: 900;
+  vertical-align: middle;
+  font-size: 92px;
+  font-weight: 800;
   color: var(--primary);
-  margin: 0 2px;
-  letter-spacing: 0.5px;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  -webkit-text-stroke: 2px rgba(0, 0, 0, 0.25);
+  text-shadow: 0 0 20px rgba(255, 209, 102, 0.55);
+  filter: drop-shadow(0 7px 14px rgba(0, 0, 0, 0.35));
   animation: storeDiscountPulse 1.8s ease-in-out infinite;
 }
+.store-discount-banner-badge-unit {
+  font-family: "ShueBannerUnit", sans-serif;
+  display: inline;
+  vertical-align: middle;
+  font-weight: 900;
+  font-size: 20px;
+  color: #fff;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
 @keyframes storeDiscountPulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.08); }
+  0%, 100% { transform: scale(1); text-shadow: 0 0 20px rgba(255, 209, 102, 0.55); }
+  50% { transform: scale(1.08); text-shadow: 0 0 30px rgba(255, 209, 102, 0.9); }
 }
 /* 用 .store-discount-banner 當前綴提高優先度，蓋掉後面 .sale-countdown 預設的橘色字
    （橫幅底色本身就是橘紅漸層，倒數字要用白色才看得清楚，不能沿用卡片上那種橘色）。 */
 .store-discount-banner .store-discount-banner-countdown {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 6px;
   font-weight: 900;
   font-size: 13px;
   padding: 4px 12px;
@@ -300,8 +339,11 @@ html { scroll-behavior: smooth; }
   color: #fff;
 }
 @media (max-width: 700px) {
-  .store-discount-banner { font-size: 13.5px; padding: 12px 14px; }
-  .store-discount-banner-percent { font-size: 24px; }
+  .store-discount-banner { font-size: 12.5px; padding: 10px 14px; }
+  .store-discount-banner-text { line-height: 18px; }
+  .store-discount-banner-badge-num { font-size: 52px; -webkit-text-stroke: 1.3px rgba(0, 0, 0, 0.25); }
+  .store-discount-banner-badge-unit { font-size: 15px; }
+  .store-discount-banner .store-discount-banner-countdown { font-size: 11px; padding: 3px 9px; }
 }
 
 /* 後台有填「橫幅圖片網址」時，整條橫幅就是妳自己設計的圖片，
@@ -316,7 +358,7 @@ html { scroll-behavior: smooth; }
   display: block;
   width: 100%;
   height: auto;
-  border-radius: var(--radius);
+  border-radius: 0;
 }
 
 .layout {
