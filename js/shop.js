@@ -510,19 +510,22 @@ function renderStoreDiscountBanner() {
   const end = new Date(STORE_DISCOUNT.end);
   const imgEl = banner.querySelector(".store-discount-banner-img");
   const textEl = banner.querySelector(".store-discount-banner-text");
-  const countdownEl = banner.querySelector(".store-discount-banner-countdown");
   const bannerImage = (STORE_DISCOUNT.bannerImage || "").trim();
 
-  // 折數用單獨的 <span> 包起來放大顯示（isStoreDiscountActive() 已經檢查過
-  // percent 是 1~99 之間的有效數字，這裡塞進 innerHTML 是安全的，不是使用者可任意輸入的文字）。
-  textEl.innerHTML = `🎉 全館 <span class="store-discount-banner-percent">${STORE_DISCOUNT.percent} 折</span> 優惠進行中！`;
-  countdownEl.dataset.end = end.toISOString();
-  countdownEl.textContent = formatCountdownText(end);
+  // 折數拆成「數字」跟「折」兩個 <span> 分開放大／縮小，倒數也內嵌在同一段文字裡，
+  // 讓「全館／85／折／優惠進行中／倒數」全部在同一排、同一條基準線上對齊；
+  // 85 的字級刻意比 .store-discount-banner-text 的行高（22px）大很多，
+  // 所以會自然突破橫幅底色的上下邊緣（破格），但仍然算同一行文字，不會跟其他字分層
+  // （isStoreDiscountActive() 已經檢查過 percent 是 1~99 之間的有效數字，
+  // 這裡塞進 innerHTML 是安全的，不是使用者可任意輸入的文字）。
+  textEl.innerHTML =
+    `🛒 全館 <span class="store-discount-banner-badge-num">${STORE_DISCOUNT.percent}</span>` +
+    `<span class="store-discount-banner-badge-unit">折</span> 優惠進行中！` +
+    `<span class="store-discount-banner-countdown sale-countdown" data-end="${end.toISOString()}">${formatCountdownText(end)}</span>`;
 
   const showTextVersion = () => {
     imgEl.style.display = "none";
     textEl.style.display = "";
-    countdownEl.style.display = "";
     banner.classList.remove("has-image");
     banner.style.display = "flex";
   };
@@ -535,7 +538,6 @@ function renderStoreDiscountBanner() {
     imgEl.src = bannerImage;
     imgEl.style.display = "block";
     textEl.style.display = "none";
-    countdownEl.style.display = "none";
     banner.classList.add("has-image");
     banner.style.display = "block";
   } else {
