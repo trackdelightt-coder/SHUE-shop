@@ -128,6 +128,16 @@ function storeDiscountMultiplier() {
   return isStoreDiscountActive() ? Number(STORE_DISCOUNT.percent) / 100 : 1;
 }
 
+// 中文的「打幾折」習慣：整十的折數（80、90...）大家都唸／寫成「8折」「9折」，
+// 沒有人會寫「80折」；只有非整十的折數（例如85）才會兩個數字一起講「85折」。
+// 這裡只影響「顯示出來的文字」，實際折扣計算（storeDiscountMultiplier 等）還是用
+// 完整的百分比數字（80、85...），不受這個顯示格式影響。
+function formatDiscountTier(percent) {
+  const n = Number(percent);
+  if (Number.isFinite(n) && n % 10 === 0) return String(n / 10);
+  return String(percent);
+}
+
 function priceFor(item, paymentMethod) {
   const base = isOnSale(item)
     ? paymentMethod === "糖果"
@@ -519,7 +529,7 @@ function renderStoreDiscountBanner() {
   // （isStoreDiscountActive() 已經檢查過 percent 是 1~99 之間的有效數字，
   // 這裡塞進 innerHTML 是安全的，不是使用者可任意輸入的文字）。
   textEl.innerHTML =
-    `🛒 全館 <span class="store-discount-banner-badge-num">${STORE_DISCOUNT.percent}</span>` +
+    `🛒 全館 <span class="store-discount-banner-badge-num">${formatDiscountTier(STORE_DISCOUNT.percent)}</span>` +
     `<span class="store-discount-banner-badge-unit">折</span> 優惠進行中！` +
     `<span class="store-discount-banner-countdown sale-countdown" data-end="${end.toISOString()}">${formatCountdownText(end)}</span>`;
 
@@ -786,11 +796,13 @@ function buildProductCard(item, { extraClass, isGift } = {}) {
   card.innerHTML = `
     <div class="card-img-wrap">
       <img src="${imageFor(item, selectedColor)}" alt="${escapeHtml(item.name)}" class="${outOfStock ? "img-soldout" : ""}" />
-      ${item.isNew ? '<div class="ribbon-new">NEW</div>' : ""}
-      ${onSale ? '<div class="ribbon-sale">特價</div>' : storeDiscountActive ? `<div class="ribbon-sale">全館${escapeHtml(String(STORE_DISCOUNT.percent))}折</div>` : ""}
+      ${onSale ? '<div class="ribbon-sale">特價</div>' : storeDiscountActive ? `<div class="ribbon-sale">全館${escapeHtml(formatDiscountTier(STORE_DISCOUNT.percent))}折</div>` : ""}
       <div class="stamp-soldout" style="${outOfStock ? "" : "display:none;"}">已售完</div>
     </div>
     <div class="body">
+      <!-- NEW 改成跟分類同一排的小標籤（不再是圖片上的斜緞帶），這樣圖片上才不會跟
+           全館折扣／特價的斜緞帶擠在一起；放在最前面，讓買家掃過去第一眼先看到新品。 -->
+      ${item.isNew ? '<div class="new-badge">NEW</div>' : ""}
       <div class="cat">${item.category}</div>
       ${Array.isArray(item.tags) && item.tags.length ? `<div class="item-tags">${item.tags.map(t=>`<span>${t}</span>`).join("")}</div>` : ""}
       ${item.excludeFromStoreDiscount ? '<div class="consignment-badge">🔒 代售商品</div>' : ""}

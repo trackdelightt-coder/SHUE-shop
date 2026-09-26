@@ -1771,6 +1771,16 @@ function normalizeStoreDiscountPercent(percent) {
   return percent;
 }
 
+// 中文的「打幾折」習慣：整十的折數（80、90...）大家都唸／寫成「8折」「9折」，
+// 沒有人會寫「80折」；只有非整十的折數（例如85）才會兩個數字一起講「85折」。
+// 這裡只影響「顯示出來的文字」，跟上面 normalizeStoreDiscountPercent() 存進資料庫的
+// 實際數字沒有關係，存檔跟計算都還是用完整的百分比（80、85...）。
+function formatDiscountTier(percent) {
+  const n = Number(percent);
+  if (Number.isFinite(n) && n % 10 === 0) return String(n / 10);
+  return String(percent);
+}
+
 // 跟特價欄位的 updateSaleStatusHint 一樣，即時顯示「現在算不算全館折扣中」，
 // 方便妳自己核對折數／時間有沒有填對，不用存檔後再跑去買家頁面確認。
 function updateStoreDiscountStatusHint() {
@@ -1798,15 +1808,16 @@ function updateStoreDiscountStatusHint() {
   // （之前就發生過打算打9折、結果看到「9折」以為沒問題，其實系統已經換算成90折存起來了）。
   const payExample = Math.round(100 * (storeDiscountPercent / 100));
   const priceNote = `等於付 ${storeDiscountPercent}%，100元的東西會變成 ${payExample}元`;
+  const tierText = formatDiscountTier(storeDiscountPercent);
   const now = new Date();
   if (now < start) {
-    hintEl.textContent = `目前狀態：尚未開始（將於 ${start.toLocaleString("zh-TW")} 開始全館 ${storeDiscountPercent} 折，${priceNote}）`;
+    hintEl.textContent = `目前狀態：尚未開始（將於 ${start.toLocaleString("zh-TW")} 開始全館 ${tierText} 折，${priceNote}）`;
     hintEl.classList.remove("active");
   } else if (now > end) {
     hintEl.textContent = `目前狀態：已結束（${end.toLocaleString("zh-TW")} 已過期，買家現在看到的是原價）`;
     hintEl.classList.remove("active");
   } else {
-    hintEl.textContent = `目前狀態：全館 ${storeDiscountPercent} 折進行中！${priceNote}，將於 ${end.toLocaleString("zh-TW")} 自動恢復原價`;
+    hintEl.textContent = `目前狀態：全館 ${tierText} 折進行中！${priceNote}，將於 ${end.toLocaleString("zh-TW")} 自動恢復原價`;
     hintEl.classList.add("active");
   }
 }
