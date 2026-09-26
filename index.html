@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>蘇蘇家具商店</title>
-<link rel="stylesheet" href="css/style.css?v=925-20260925-4" />
+<link rel="stylesheet" href="css/style.css?v=925-20260925-5" />
 </head>
 <body>
   <header class="topbar">
@@ -166,7 +166,7 @@
 
 
   <script src="js/vendor/html2canvas.min.js?v=817-20260817-3"></script>
-  <script type="module" src="js/shop.js?v=925-20260925-5"></script>
+  <script type="module" src="js/shop.js?v=925-20260925-7"></script>
   <button type="button" id="backToTopBtn" class="back-to-top" aria-label="回到頂端">↑</button>
 
 
@@ -212,9 +212,13 @@
       background:rgba(85,230,210,.12);border:1px solid rgba(85,230,210,.3);
       color:var(--teal);font-size:10px;font-weight:800;line-height:1.25;
     }
+    .card .force-meta-row .new-badge,
+    .card .meta-row .new-badge{
+      display:inline-flex !important;align-items:center;align-self:center !important;
+    }
     @media(max-width:860px){
-      .card .force-meta-row .cat,.card .force-meta-row .item-tag,.card .force-meta-row .item-tags span,.card .force-meta-row .consignment-badge,
-      .card .meta-row .cat,.card .meta-row .item-tag,.card .meta-row .item-tags span,.card .meta-row .consignment-badge{font-size:9px;padding:2px 5px}
+      .card .force-meta-row .cat,.card .force-meta-row .item-tag,.card .force-meta-row .item-tags span,.card .force-meta-row .consignment-badge,.card .force-meta-row .new-badge,
+      .card .meta-row .cat,.card .meta-row .item-tag,.card .meta-row .item-tags span,.card .meta-row .consignment-badge,.card .meta-row .new-badge{font-size:9px;padding:2px 5px}
     }
   </style>
   <script>
@@ -224,13 +228,15 @@
     function forceMetaRows(){
       document.querySelectorAll('#grid .card .body').forEach(body=>{
         let row = body.querySelector(':scope > .meta-row, :scope > .force-meta-row');
+        const directNew = body.querySelector(':scope > .new-badge');
         const directCat = body.querySelector(':scope > .cat');
         const directTags = body.querySelector(':scope > .item-tags');
         const directConsignment = body.querySelector(':scope > .consignment-badge');
 
-        if(!row && (directCat || directTags || directConsignment)){
+        if(!row && (directNew || directCat || directTags || directConsignment)){
           row=document.createElement('div');
           row.className='force-meta-row';
+          if(directNew) row.appendChild(directNew);
           if(directCat) row.appendChild(directCat);
           if(directTags) row.appendChild(directTags);
           if(directConsignment) row.appendChild(directConsignment);
@@ -244,6 +250,9 @@
           if(outsideCat && outsideCat.parentElement===body) row.insertBefore(outsideCat,row.firstChild);
           const outsideConsignment=body.querySelector(':scope > .consignment-badge');
           if(outsideConsignment && outsideConsignment.parentElement===body) row.appendChild(outsideConsignment);
+          // NEW 要放在最前面，所以永遠 insertBefore 到 row 的第一個位置
+          const outsideNew=body.querySelector(':scope > .new-badge');
+          if(outsideNew && outsideNew.parentElement===body) row.insertBefore(outsideNew, row.firstChild);
         }
       });
     }
