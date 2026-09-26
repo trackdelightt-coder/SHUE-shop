@@ -507,23 +507,37 @@ img.img-soldout {
 
 /* 新品標記：原本是蓋在圖片上的斜緞帶，改成跟分類同一排的小標籤，放在最前面。
    這樣圖片上就只剩全館折扣／特價那條斜緞帶，不會兩條斜緞帶擠在同一張圖上。
-   帶一個緩慢的縮放＋發光呼吸動畫，維持原本「NEW要顯眼」的效果。 */
+   實心方角小標籤，不用縮放呼吸那種動畫，改成網路商店常見的「反光掃過」效果——
+   一道亮光每隔幾秒從標籤上滑過去一次，安靜但還是有動態、會吸引目光。 */
 .new-badge {
+  position: relative;
   display: inline-flex;
   align-self: flex-start;
   align-items: center;
+  overflow: hidden;
   font-size: 10px;
   font-weight: 900;
   letter-spacing: 0.5px;
   padding: 3px 8px;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #ff5566, #d91f3c);
+  border-radius: 4px;
+  background: #ff3355;
   color: #fff;
-  animation: newBadgePulse 1.6s ease-in-out infinite;
+  box-shadow: 0 2px 6px rgba(255, 51, 85, 0.35);
 }
-@keyframes newBadgePulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 85, 102, 0.55); transform: scale(1); }
-  50% { box-shadow: 0 0 8px 2px rgba(255, 85, 102, 0.35); transform: scale(1.06); }
+.new-badge::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 35%;
+  height: 100%;
+  background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+  animation: newBadgeShine 2.8s ease-in-out infinite;
+}
+@keyframes newBadgeShine {
+  0% { left: -60%; }
+  35% { left: 130%; }
+  100% { left: 130%; }
 }
 
 /* 代售商品標記：讓買家在商品卡片上就能直接看到「這件是代售、價格固定」，
