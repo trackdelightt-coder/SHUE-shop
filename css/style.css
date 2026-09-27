@@ -1877,14 +1877,81 @@ tr:hover td { background: rgba(255,255,255,.018); }
   color: #fff;
 }
 
-/* 訂單表格欄位比較多（10欄），手機或視窗較窄時，與其讓每一欄被擠到只剩
-   一兩個字寬、文字整個直向斷字，不如讓表格保持合理寬度、用左右滑動看，
-   閱讀起來輕鬆很多。只包這張表，不影響其他分頁的表格版面。 */
+/* 訂單表格欄位比較多（11欄），螢幕夠寬時（電腦、平板橫放）維持正常表格、
+   保留左右滑動當作保險絲；但手機這種窄螢幕不要再讓她「拉霸」左右移動找欄位，
+   改成一筆訂單一張卡片、直接照順序往下看，每個欄位前面自己帶標籤文字。
+   只包這張表，不影響其他分頁的表格版面。 */
 .table-scroll {
   overflow-x: auto;
 }
 .orders-table {
   min-width: 920px;
+}
+
+@media (max-width: 860px) {
+  .table-scroll {
+    overflow-x: visible;
+  }
+  .orders-table {
+    min-width: 0;
+    width: 100%;
+  }
+  .orders-table thead {
+    display: none;
+  }
+  .orders-table,
+  .orders-table tbody,
+  .orders-table tr,
+  .orders-table td {
+    display: block;
+    width: 100%;
+  }
+  .orders-table tr {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px 12px;
+    margin-bottom: 12px;
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .orders-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--border);
+    text-align: right;
+  }
+  .orders-table td:last-child {
+    border-bottom: none;
+  }
+  .orders-table td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    color: var(--muted);
+    flex-shrink: 0;
+    text-align: left;
+  }
+  /* 明細（商品清單）跟備註可能是一整段內容，跟數值型欄位不同，
+     標籤要放上面、內容整段往下接著顯示，而不是硬要塞在同一行右邊。 */
+  .orders-table td[data-label="明細"],
+  .orders-table td[data-label="備註"] {
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+  }
+  .orders-table td[data-label="明細"] .order-items-list,
+  .orders-table td[data-label="備註"] {
+    width: 100%;
+  }
+  .orders-table td[data-label="明細"] .order-items-list {
+    max-width: none;
+    min-width: 0;
+  }
+  .orders-table td select,
+  .orders-table td input[type="number"] {
+    max-width: 55%;
+  }
 }
 
 .image-upload-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -2072,7 +2139,7 @@ tr:hover td { background: rgba(255,255,255,.018); }
   background: rgba(255, 111, 129, 0.09);
   box-shadow: inset 3px 0 0 var(--danger);
 }
-.order-row-pending td:nth-child(9) select {
+.order-row-pending td[data-label="狀態"] select {
   border-color: var(--danger);
   font-weight: 700;
 }
