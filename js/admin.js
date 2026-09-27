@@ -148,7 +148,9 @@ onAuthStateChanged(auth, (user) => {
 async function showAdmin() {
   document.getElementById("loginView").style.display = "none";
   document.getElementById("adminView").style.display = "block";
-  await Promise.all([loadItems(), loadSeries(), loadAuctions(), loadExchangeItems()]);
+  // loadOrders() 也一起在這裡跑，是為了讓「訂單管理」分頁上的待確認紅色角標，
+  // 一登入就能看到，不用特地點進那個分頁才發現有訂單忘了處理。
+  await Promise.all([loadItems(), loadSeries(), loadAuctions(), loadExchangeItems(), loadOrders()]);
   await loadTaxonomy();
   refreshTaxonomyUI();
 }
@@ -1598,8 +1600,18 @@ document.getElementById("seedBtn").onclick = async () => {
 
 // ---------- Orders ----------
 async function loadOrders() {
-  const snap = await getDocs(query(collection(db, "orders"), orderBy("createdAt", "desc")));
-  const orders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  // 這裡也要包 try/catch（跟 loadAuctions() 一樣的理由）：現在 showAdmin() 一登入
+  // 就會順便讀一次訂單，是為了在「訂單管理」分頁上顯示待確認數量的紅色提醒角標，
+  // 讓她不用點進分頁就能看到有沒有漏掉的訂單。如果這裡讀取失敗沒接住，
+  // 會連帶讓 Promise.all 中斷，害其他分頁（分類/標籤設定等）沒機會畫出來。
+  let orders = [];
+  try {
+    const snap = await getDocs(query(collection(db, "orders"), orderBy("createdAt", "desc")));
+    orders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (err) {
+    console.error("[Firestore] 讀取訂單失敗:", err);
+    orders = [];
+  }
   renderOrderStats(orders);
   const tbody = document.getElementById("ordersTbody");
   tbody.innerHTML = "";
@@ -1608,6 +1620,9 @@ async function loadOrders() {
     // 這樣妳出貨前不用切回商品管理頁面查，直接在訂單這裡就知道要去哪個分身拿貨。
     // 這裡抓的是「商品目前的」分身資料（即時查詢），不是下單當下的分身狀態，
     // 因為分身庫存本來就會隨時搬動，出貨當下看最新的才有意義。
+    // 商品明細順便帶一張小縮圖，出貨前一眼就能認出東西長怎樣，不用只靠文字名稱猜。
+    // 圖片用「下單當時」存在訂單裡的那張（imageFor 選到的款式照片），不是抓商品現在的
+    // 封面照——這樣就算之後商品圖片換掉了，舊訂單顯示的還是當初買家買的那個樣子。
     const detail = (o.items || [])
       .map((i) => {
         const currentItem = ALL_ITEMS.find((x) => x.id === i.id);
@@ -1620,13 +1635,17 @@ async function loadOrders() {
               .join("\n")}">🧍${altList.length}</span>`
           : "";
         const colorText = i.color ? `（${escapeHtml(i.color)}）` : "";
-        return `${i.name}${colorText} x${i.qty}${altHint}`;
+        return `<div class="order-item-line">
+          <img class="order-item-thumb" src="${i.image || PLACEHOLDER_IMG}" alt="${escapeHtml(i.name || "")}" />
+          <span>${i.name}${colorText} x${i.qty}${altHint}</span>
+        </div>`;
       })
-      .join("、");
-    const icon = o.paymentMethod === "糖果" ? "🍬" : "💵";
-    const totalText = o.paymentMethod === "糖果" ? `🍬 ${o.total}` : `💵 NT$ ${o.total}`;
+      .join("");
     const createdAtText = o.createdAt && o.createdAt.toDate ? o.createdAt.toDate().toLocaleString("zh-TW") : "";
     const tr = document.createElement("tr");
+    // 「待確認」代表買家送出訂單後，她還沒在 Discord 那邊核對過、也還沒開始處理，
+    // 是最容易被忘記的狀態，所以整行用明顯的顏色標示出來，不用另外去看狀態欄位文字。
+    if (o.status === "待確認") tr.classList.add("order-row-pending");
     const genderText = o.characterGender === "女角" ? "🙍‍♀️ 女角" : o.characterGender === "男角" ? "🙎‍♂️ 男角" : "-";
     tr.innerHTML = `
       <td>${o.id}</td>
@@ -1634,11 +1653,18 @@ async function loadOrders() {
       <td>${o.buyerName}</td>
       <td>${o.contact}</td>
       <td>${genderText}</td>
-      <td>${icon} ${o.paymentMethod}</td>
-      <td>${detail}</td>
-      <td>${totalText}</td>
       <td>
-        <select data-id="${o.id}">
+        <select class="order-payment-select">
+          <option value="糖果" ${o.paymentMethod === "糖果" ? "selected" : ""}>🍬 糖果</option>
+          <option value="現金" ${o.paymentMethod === "現金" ? "selected" : ""}>💵 現金</option>
+        </select>
+      </td>
+      <td>${detail}</td>
+      <td>
+        <input type="number" class="order-total-edit" min="0" step="1" value="${o.total}" />
+      </td>
+      <td>
+        <select class="order-status-select" data-id="${o.id}">
           ${["待確認", "備貨中", "已出貨", "已完成", "已取消"]
             .map((s) => `<option value="${s}" ${s === o.status ? "selected" : ""}>${s}</option>`)
             .join("")}
@@ -1646,8 +1672,18 @@ async function loadOrders() {
       </td>
       <td><button class="del">刪除</button></td>
     `;
-    tr.querySelector("select").onchange = (e) => updateOrderStatus(o, e.target.value);
+    tr.querySelector(".order-status-select").onchange = (e) => updateOrderStatus(o, e.target.value);
+    // 買家下單後如果反悔想改用另一種方式付款（糖果／現金），可以直接在這裡改，
+    // 不用叫她跑去改資料庫。改了付款方式以後，金額不會自動幫她重算——因為兩種付款
+    // 方式的價格不是單純的匯率換算，各商品的糖果價／現金價是分開設定的兩個數字，
+    // 自動猜很容易猜錯；金額欄位改成可以手動輸入，她自己跟買家核對好多少錢，
+    // 直接打進去存起來最不會出錯。
+    tr.querySelector(".order-payment-select").onchange = (e) => updateOrderPaymentMethod(o, e.target.value);
+    tr.querySelector(".order-total-edit").onchange = (e) => updateOrderTotal(o, e.target.value);
     tr.querySelector(".del").onclick = () => deleteOrder(o);
+    tr.querySelectorAll(".order-item-thumb").forEach((img) => {
+      img.onerror = () => { img.onerror = null; img.src = PLACEHOLDER_IMG; };
+    });
     tbody.appendChild(tr);
   });
 }
@@ -1657,7 +1693,9 @@ async function loadOrders() {
 function renderOrderStats(orders) {
   let candyTotal = 0;
   let cashTotal = 0;
+  let pendingCount = 0;
   orders.forEach((o) => {
+    if (o.status === "待確認") pendingCount += 1;
     if (o.status !== "已完成") return;
     if (o.paymentMethod === "糖果") {
       candyTotal += o.total || 0;
@@ -1669,6 +1707,19 @@ function renderOrderStats(orders) {
   const cashEl = document.getElementById("statCashTotal");
   if (candyEl) candyEl.textContent = `🍬 ${candyTotal}`;
   if (cashEl) cashEl.textContent = `💵 NT$ ${cashTotal}`;
+
+  // 待確認訂單的紅色角標：一個在「訂單管理」分頁按鈕上（不用點進去就看得到），
+  // 一個在分頁裡最上面（點進去第一眼就看到）。兩個都是「有才顯示」，
+  // 沒有待確認訂單的時候完全隱藏，不會平白留一個「0」在那邊佔位置。
+  const badgeEl = document.getElementById("pendingOrdersBadge");
+  const boxEl = document.getElementById("pendingOrderStatBox");
+  const countEl = document.getElementById("statPendingCount");
+  if (badgeEl) {
+    badgeEl.textContent = String(pendingCount);
+    badgeEl.style.display = pendingCount > 0 ? "inline-flex" : "none";
+  }
+  if (boxEl) boxEl.style.display = pendingCount > 0 ? "block" : "none";
+  if (countEl) countEl.textContent = String(pendingCount);
 }
 
 // 幫訂單裡每一樣商品「加回」或「扣掉」庫存數量。
@@ -1732,6 +1783,39 @@ async function updateOrderStatus(order, newStatus) {
     loadOrders();
   } catch (err) {
     alert("訂單狀態更新失敗：" + (err && err.message ? err.message : err));
+  }
+}
+
+// 買家下單後想改用另一種付款方式（糖果／現金）的話，她可以直接在訂單列表這裡改，
+// 不用叫買家整筆訂單刪掉重下。故意不自動重算金額——糖果價／現金價是每個商品分開
+// 填的兩個數字，不是單純乘匯率換算，程式自動猜很容易猜錯（尤其是特價中、或全館
+// 折扣期間下的單），金額欄位開放手動輸入，讓她自己跟買家核對後填最準確的數字。
+async function updateOrderPaymentMethod(order, newMethod) {
+  if (order.paymentMethod === newMethod) return;
+  try {
+    await updateDoc(doc(db, "orders", order.id), { paymentMethod: newMethod });
+    loadOrders();
+  } catch (err) {
+    alert("付款方式更新失敗：" + (err && err.message ? err.message : err));
+  }
+}
+
+// 搭配上面的付款方式修改：金額也開放直接在列表裡編輯（例如改了付款方式之後，
+// 跟買家核對出正確金額，直接填進去）。輸入框失去焦點（onchange）才會存檔，
+// 不是每打一個字就寫一次資料庫。
+async function updateOrderTotal(order, newTotalRaw) {
+  const newTotal = Number(newTotalRaw);
+  if (!Number.isFinite(newTotal) || newTotal < 0) {
+    alert("金額請輸入正確的數字（不能是負的或空白）。");
+    loadOrders();
+    return;
+  }
+  if (newTotal === order.total) return;
+  try {
+    await updateDoc(doc(db, "orders", order.id), { total: newTotal });
+    loadOrders();
+  } catch (err) {
+    alert("金額更新失敗：" + (err && err.message ? err.message : err));
   }
 }
 
