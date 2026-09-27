@@ -1623,7 +1623,11 @@ async function loadOrders() {
     // 商品明細順便帶一張小縮圖，出貨前一眼就能認出東西長怎樣，不用只靠文字名稱猜。
     // 圖片用「下單當時」存在訂單裡的那張（imageFor 選到的款式照片），不是抓商品現在的
     // 封面照——這樣就算之後商品圖片換掉了，舊訂單顯示的還是當初買家買的那個樣子。
-    const detail = (o.items || [])
+    // 訂單品項多的時候（例如一次買5、6樣），如果每樣都整行攤開，
+    // 這一列會被拉得很長很占版面。改用固定高度＋可以在裡面滾動的小清單，
+    // 商品名稱太長就省略號截斷（滑鼠移上去用 title 看完整名稱），
+    // 這樣不管一筆訂單買了幾樣東西，這一列的高度都不會跑掉。
+    const itemLines = (o.items || [])
       .map((i) => {
         const currentItem = ALL_ITEMS.find((x) => x.id === i.id);
         const altList = Array.isArray(currentItem?.stockByAlt)
@@ -1635,12 +1639,14 @@ async function loadOrders() {
               .join("\n")}">🧍${altList.length}</span>`
           : "";
         const colorText = i.color ? `（${escapeHtml(i.color)}）` : "";
-        return `<div class="order-item-line">
+        const fullText = `${i.name}${colorText} x${i.qty}`;
+        return `<div class="order-item-line" title="${escapeHtml(fullText)}">
           <img class="order-item-thumb" src="${i.image || PLACEHOLDER_IMG}" alt="${escapeHtml(i.name || "")}" />
-          <span>${i.name}${colorText} x${i.qty}${altHint}</span>
+          <span class="order-item-text">${i.name}${colorText} x${i.qty}</span>${altHint}
         </div>`;
       })
       .join("");
+    const detail = `<div class="order-items-list">${itemLines}</div>`;
     const createdAtText = o.createdAt && o.createdAt.toDate ? o.createdAt.toDate().toLocaleString("zh-TW") : "";
     const tr = document.createElement("tr");
     // 「待確認」代表買家送出訂單後，她還沒在 Discord 那邊核對過、也還沒開始處理，
