@@ -1025,8 +1025,14 @@ function renderItemsTable() {
           .join("\n")}">🎨 ${colorVariantList.length}色</div>`
       : "";
     const tr = document.createElement("tr");
+    // data-item-id：拖曳排序時要靠這個找出「拖完之後、畫面上這一列的上下鄰居實際是誰」，
+    // 才能算出新的排序數字（見下面 reorderItemBetween）。
+    tr.dataset.itemId = item.id;
     tr.innerHTML = `
-      <td><img src="${item.image}" style="width:60px;height:44px;object-fit:cover;border-radius:6px;" /></td>
+      <td>
+        <span class="drag-handle" title="按住並拖曳，可以直接調整順序，不用一個一個點▲▼">⠿</span>
+        <img src="${item.image}" style="width:60px;height:44px;object-fit:cover;border-radius:6px;" />
+      </td>
       <td>${item.name}${badges}</td>
       <td>${ALL_SERIES.find((x) => x.id === item.seriesId)?.name || item.seriesName || "—"}</td>
       <td>${item.category}</td>
@@ -1052,8 +1058,86 @@ function renderItemsTable() {
     tr.querySelector(".edit").onclick = () => fillForm(item);
     tr.querySelector(".toggle").onclick = () => toggleActive(item);
     tr.querySelector(".del").onclick = () => deleteItem(item.id);
+    attachDragToReorder(tr);
     tbody.appendChild(tr);
   });
+}
+
+// ---------- 商品排序：按住 ⠿ 拖曳，不用一個一個點 ▲▼ ----------
+// 用 Pointer Events（不是舊式的 HTML5 drag-and-drop）是因為 HTML5 dragstart/drop
+// 在手機瀏覽器上大多不會觸發，她主要都是用手機在後台操作，用 Pointer Events
+// 滑鼠、觸控都吃得到。拖曳時只是先搬動畫面上的 <tr>（純視覺），
+// 放開手指/滑鼠那一刻才根據「拖完後畫面上的上下鄰居是誰」算一次新的排序數字、
+// 寫回 Firestore——不管拖多遠，一次只需要寫這一筆商品，不會像整批重寫那樣浪費寫入次數。
+function attachDragToReorder(tr) {
+  const handle = tr.querySelector(".drag-handle");
+  if (!handle) return;
+  handle.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    const tbody = tr.parentElement;
+    if (!tbody) return;
+    tr.classList.add("dragging");
+
+    const onMove = (ev) => {
+      const overEl = document.elementFromPoint(ev.clientX, ev.clientY);
+      const overRow = overEl && overEl.closest("tr");
+      if (!overRow || overRow === tr || overRow.parentElement !== tbody) return;
+      const rect = overRow.getBoundingClientRect();
+      const putBefore = ev.clientY < rect.top + rect.height / 2;
+      tbody.insertBefore(tr, putBefore ? overRow : overRow.nextSibling);
+    };
+    const onUp = async () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+      tr.classList.remove("dragging");
+      const rows = Array.from(tbody.querySelectorAll("tr"));
+      const newIdx = rows.indexOf(tr);
+      const prevId = rows[newIdx - 1]?.dataset.itemId || null;
+      const nextId = rows[newIdx + 1]?.dataset.itemId || null;
+      await reorderItemBetween(tr.dataset.itemId, prevId, nextId);
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
+  });
+}
+
+// 商品目前的排序數字（跟 moveItem() 用的規則一樣：舊商品如果還沒存過 sortOrder，
+// 暫時用它在 ALL_ITEMS 裡的位置當作預設值）。
+function effectiveSortOrder(item) {
+  if (item.sortOrder !== undefined) return Number(item.sortOrder);
+  const idx = ALL_ITEMS.findIndex((i) => i.id === item.id);
+  return idx >= 0 ? idx + 1 : 0;
+}
+
+// 把商品搬到「畫面上新的上下鄰居之間」：直接取兩邊排序數字的中間值當它的新排序，
+// 不用去動到其他商品的 sortOrder，不管拖多遠，永遠只需要寫這一筆商品。
+async function reorderItemBetween(itemId, prevId, nextId) {
+  const item = ALL_ITEMS.find((i) => i.id === itemId);
+  if (!item) return;
+  const prevItem = prevId ? ALL_ITEMS.find((i) => i.id === prevId) : null;
+  const nextItem = nextId ? ALL_ITEMS.find((i) => i.id === nextId) : null;
+  const prevOrder = prevItem ? effectiveSortOrder(prevItem) : null;
+  const nextOrder = nextItem ? effectiveSortOrder(nextItem) : null;
+
+  let newSortOrder;
+  if (prevOrder !== null && nextOrder !== null) {
+    newSortOrder = (prevOrder + nextOrder) / 2;
+  } else if (prevOrder !== null) {
+    newSortOrder = prevOrder + 1;
+  } else if (nextOrder !== null) {
+    newSortOrder = nextOrder - 1;
+  } else {
+    newSortOrder = 1;
+  }
+
+  if (newSortOrder === effectiveSortOrder(item)) {
+    loadItems(); // 位置其實沒變（例如放開時又拖回原位），重新整理畫面就好，不用寫資料庫
+    return;
+  }
+  await updateDoc(doc(db, "items", item.id), { sortOrder: newSortOrder });
+  loadItems();
 }
 
 function renderItemsPagination(totalItems) {
