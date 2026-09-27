@@ -1386,6 +1386,30 @@ button.secondary-btn {
 .row-actions .move-down { color: var(--primary); font-weight: 800; }
 .row-actions button:disabled { color: var(--muted); opacity: 0.35; cursor: not-allowed; }
 
+/* 商品排序：按住 ⠿ 直接拖曳這一列到想要的位置，不用一直點 ▲▼。 */
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 44px;
+  margin-right: 6px;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  vertical-align: middle;
+}
+.drag-handle:active {
+  cursor: grabbing;
+  color: var(--primary);
+}
+#itemsTbody tr.dragging {
+  opacity: 0.45;
+  background: rgba(255, 209, 102, 0.08);
+}
+
 .badge {
   display: inline-block;
   padding: 2px 8px;
