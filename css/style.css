@@ -1152,8 +1152,10 @@ img.img-soldout {
 .msg.error { background: rgba(255, 111, 129, 0.18); color: #ffb3bd; }
 
 /* ---------- Admin ---------- */
+/* 原本卡死在 1000px，桌機螢幕明明左右還有空間卻用不到，訂單表格才會被擠到
+   要拉霸。改成跟著視窗寬度走（上限 1600px，不會在超寬螢幕上散得太開）。 */
 .admin-wrap {
-  max-width: 1000px;
+  max-width: min(96vw, 1600px);
   margin: 0 auto;
   padding: 24px;
 }
@@ -1877,72 +1879,76 @@ tr:hover td { background: rgba(255,255,255,.018); }
   color: #fff;
 }
 
-/* 訂單表格欄位比較多（11欄），不管在電腦、平板還是手機開，都不要再讓她「拉霸」
-   左右移動找欄位——不分螢幕寬度，一律改成一筆訂單一張卡片、直接照順序往下看，
-   每個欄位前面自己帶標籤文字。.table-scroll 保留 overflow-x 當保險絲（理論上
-   不會用到，但真的有超寬內容硬撐開時，至少還能滑得動，不會整個版面爆版）。
+/* 訂單表格欄位比較多（11欄）。桌機／平板螢幕已經把 .admin-wrap 放寬了，
+   讓表格照內容自然排開就好，一次能看到很多筆訂單，不要再變成一筆一張卡片
+   （那樣要一直往下滑才能看完，桌機版面反而更難一次看完全部訂單）；
+   .table-scroll 保留 overflow-x 當保險絲，內容真的超出視窗寬度時還能滑得動。
+   只有手機這種窄螢幕（放不下這麼多欄）才切換成卡片版面。
    只包這張表，不影響其他分頁的表格版面。 */
 .table-scroll {
   overflow-x: auto;
 }
-.orders-table {
-  width: 100%;
-}
-.orders-table thead {
-  display: none;
-}
-.orders-table,
-.orders-table tbody,
-.orders-table tr,
-.orders-table td {
-  display: block;
-  width: 100%;
-}
-.orders-table tr {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 4px 12px;
-  margin-bottom: 12px;
-  background: rgba(255, 255, 255, 0.03);
-}
-.orders-table td {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px dashed var(--border);
-  text-align: right;
-}
-.orders-table td:last-child {
-  border-bottom: none;
-}
-.orders-table td::before {
-  content: attr(data-label);
-  font-weight: 700;
-  color: var(--muted);
-  flex-shrink: 0;
-  text-align: left;
-}
-/* 明細（商品清單）跟備註可能是一整段內容，跟數值型欄位不同，
-   標籤要放上面、內容整段往下接著顯示，而不是硬要塞在同一行右邊。 */
-.orders-table td[data-label="明細"],
-.orders-table td[data-label="備註"] {
-  flex-direction: column;
-  align-items: flex-start;
-  text-align: left;
-}
-.orders-table td[data-label="明細"] .order-items-list,
-.orders-table td[data-label="備註"] {
-  width: 100%;
-}
-.orders-table td[data-label="明細"] .order-items-list {
-  max-width: none;
-  min-width: 0;
-}
-.orders-table td select,
-.orders-table td input[type="number"] {
-  max-width: 55%;
+
+@media (max-width: 860px) {
+  .orders-table {
+    width: 100%;
+  }
+  .orders-table thead {
+    display: none;
+  }
+  .orders-table,
+  .orders-table tbody,
+  .orders-table tr,
+  .orders-table td {
+    display: block;
+    width: 100%;
+  }
+  .orders-table tr {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px 12px;
+    margin-bottom: 12px;
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .orders-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--border);
+    text-align: right;
+  }
+  .orders-table td:last-child {
+    border-bottom: none;
+  }
+  .orders-table td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    color: var(--muted);
+    flex-shrink: 0;
+    text-align: left;
+  }
+  /* 明細（商品清單）跟備註可能是一整段內容，跟數值型欄位不同，
+     標籤要放上面、內容整段往下接著顯示，而不是硬要塞在同一行右邊。 */
+  .orders-table td[data-label="明細"],
+  .orders-table td[data-label="備註"] {
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+  }
+  .orders-table td[data-label="明細"] .order-items-list,
+  .orders-table td[data-label="備註"] {
+    width: 100%;
+  }
+  .orders-table td[data-label="明細"] .order-items-list {
+    max-width: none;
+    min-width: 0;
+  }
+  .orders-table td select,
+  .orders-table td input[type="number"] {
+    max-width: 55%;
+  }
 }
 
 .image-upload-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
