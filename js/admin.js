@@ -1085,15 +1085,23 @@ document.getElementById("categoryFilter").addEventListener("change", () => { ITE
 document.getElementById("seriesFilterAdmin")?.addEventListener("change", () => { ITEMS_CURRENT_PAGE = 1; renderItemsTable(); });
 
 // 把完整清單（ALL_ITEMS）裡第 idx 筆和它上面（direction=-1）或下面（direction=1）
-// 那筆互換順序，然後把「目前這份排序」整批寫回資料庫（幫每筆商品補上 sortOrder）。
+// 那筆互換順序。只有這兩筆商品的 sortOrder 真的有變，所以只需要寫回這兩筆，
+// 不用把全部商品都重新寫一次資料庫（以前的寫法是每筆商品都 updateDoc，
+// 商品一多、常常調順序的話，會浪費很多不必要的 Firestore 寫入次數）。
 async function moveItem(idx, direction) {
   const targetIdx = idx + direction;
   if (targetIdx < 0 || targetIdx >= ALL_ITEMS.length) return;
 
-  const items = ALL_ITEMS.slice();
-  [items[idx], items[targetIdx]] = [items[targetIdx], items[idx]];
+  const itemA = ALL_ITEMS[idx];
+  const itemB = ALL_ITEMS[targetIdx];
+  // 用「對方原本的 sortOrder」互換，兩邊都補上預設值以防舊商品還沒有 sortOrder。
+  const sortOrderA = itemA.sortOrder !== undefined ? itemA.sortOrder : idx + 1;
+  const sortOrderB = itemB.sortOrder !== undefined ? itemB.sortOrder : targetIdx + 1;
 
-  await Promise.all(items.map((item, i) => updateDoc(doc(db, "items", item.id), { sortOrder: i + 1 })));
+  await Promise.all([
+    updateDoc(doc(db, "items", itemA.id), { sortOrder: sortOrderB }),
+    updateDoc(doc(db, "items", itemB.id), { sortOrder: sortOrderA }),
+  ]);
   loadItems();
 }
 
