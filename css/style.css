@@ -1829,20 +1829,36 @@ tr:hover td { background: rgba(255,255,255,.018); }
   white-space: nowrap;
 }
 
+/* 訂單品項清單：固定高度＋內部捲動，不管一筆訂單買了幾樣商品，
+   這一列的高度都是固定的，不會因為品項一多就把整列拉得很長。
+   大概抓 3 樣商品的高度，超過的話裡面自己滾動，不會撐開整個表格列。 */
+.order-items-list {
+  max-height: 112px;
+  overflow-y: auto;
+  min-width: 190px;
+  max-width: 230px;
+}
 .order-item-line {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 12.5px;
+  cursor: help;
 }
 .order-item-line + .order-item-line { margin-top: 6px; }
 .order-item-thumb {
-  width: 38px;
-  height: 30px;
+  width: 34px;
+  height: 26px;
   object-fit: cover;
   border-radius: 5px;
   border: 1px solid var(--border);
   flex-shrink: 0;
+}
+.order-item-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .order-payment-select {
@@ -1861,6 +1877,16 @@ tr:hover td { background: rgba(255,255,255,.018); }
   border: 1px solid var(--border);
   background: var(--panel-light);
   color: #fff;
+}
+
+/* 訂單表格欄位比較多（10欄），手機或視窗較窄時，與其讓每一欄被擠到只剩
+   一兩個字寬、文字整個直向斷字，不如讓表格保持合理寬度、用左右滑動看，
+   閱讀起來輕鬆很多。只包這張表，不影響其他分頁的表格版面。 */
+.table-scroll {
+  overflow-x: auto;
+}
+.orders-table {
+  min-width: 920px;
 }
 
 .image-upload-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
