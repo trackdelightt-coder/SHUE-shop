@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>蘇蘇家具商店 - 後台管理</title>
-<link rel="stylesheet" href="css/style.css?v=926-20260927-2" />
+<link rel="stylesheet" href="css/style.css?v=926-20260927-3" />
 </head>
 <body>
   <header class="topbar">
@@ -268,12 +268,14 @@
           <div class="order-stat-value" id="statCashTotal">NT$ 0</div>
         </div>
       </div>
-      <table>
-        <thead>
-          <tr><th>訂單編號</th><th>時間</th><th>買家</th><th>聯絡方式</th><th>角色</th><th>付款方式</th><th>明細</th><th>總金額</th><th>狀態</th><th>操作</th></tr>
-        </thead>
-        <tbody id="ordersTbody"></tbody>
-      </table>
+      <div class="table-scroll">
+        <table class="orders-table">
+          <thead>
+            <tr><th>訂單編號</th><th>時間</th><th>買家</th><th>聯絡方式</th><th>角色</th><th>付款方式</th><th>明細</th><th>總金額</th><th>狀態</th><th>操作</th></tr>
+          </thead>
+          <tbody id="ordersTbody"></tbody>
+        </table>
+      </div>
     </div>
 
     <div id="exchangePanel" style="display:none;">
@@ -377,6 +379,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/admin.js?v=926-20260927-3"></script>
+  <script type="module" src="js/admin.js?v=926-20260927-4"></script>
 </body>
 </html>
