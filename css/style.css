@@ -243,13 +243,7 @@ html { scroll-behavior: smooth; }
 .howto-section {
   max-width: 1800px;
   margin: 0 auto;
-  padding: 0 40px 8px;
-}
-.howto-title {
-  font-size: 18px;
-  font-weight: 900;
-  margin-bottom: 14px;
-  color: var(--text);
+  padding: 20px 40px 8px;
 }
 .howto-flow {
   display: flex;
@@ -318,8 +312,7 @@ html { scroll-behavior: smooth; }
   line-height: 1.5;
 }
 @media (max-width: 860px) {
-  .howto-section { padding: 0 20px 8px; }
-  .howto-title { font-size: 15px; margin-bottom: 10px; }
+  .howto-section { padding: 14px 20px 8px; }
   .howto-flow { gap: 0; }
   .howto-card { padding: 10px 6px; text-align: center; }
   .howto-arrow { flex: 0 0 14px; }
@@ -353,13 +346,13 @@ html { scroll-behavior: smooth; }
    不需要連 Google 的服務，手機／電腦都會顯示一致的效果、也不會拖慢載入。 */
 @font-face {
   font-family: "ShueBannerNum";
-  src: url("fonts/Poppins-800.woff2") format("woff2");
+  src: url("../fonts/Poppins-800.woff2") format("woff2");
   font-weight: 800;
   font-display: swap;
 }
 @font-face {
   font-family: "ShueBannerUnit";
-  src: url("fonts/NotoSansTC-900.woff2") format("woff2");
+  src: url("../fonts/NotoSansTC-900.woff2") format("woff2");
   font-weight: 900;
   font-display: swap;
 }
