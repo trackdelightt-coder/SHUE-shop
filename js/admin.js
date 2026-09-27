@@ -1653,30 +1653,34 @@ async function loadOrders() {
     // 是最容易被忘記的狀態，所以整行用明顯的顏色標示出來，不用另外去看狀態欄位文字。
     if (o.status === "待確認") tr.classList.add("order-row-pending");
     const genderText = o.characterGender === "女角" ? "🙍‍♀️ 女角" : o.characterGender === "男角" ? "🙎‍♂️ 男角" : "-";
+    // 每個 <td> 都加 data-label，手機版才能把表格轉成一張一張的卡片顯示
+    // （見 style.css 的 .orders-table 手機版樣式），卡片版面不用左右滑動也不用
+    // 內部捲動，每一筆訂單直接照順序往下看就好。
     tr.innerHTML = `
-      <td>${o.id}</td>
-      <td>${createdAtText}</td>
-      <td>${o.buyerName}</td>
-      <td>${o.contact}</td>
-      <td>${genderText}</td>
-      <td>
+      <td data-label="訂單編號">${o.id}</td>
+      <td data-label="時間">${createdAtText}</td>
+      <td data-label="買家">${o.buyerName}</td>
+      <td data-label="聯絡方式">${o.contact}</td>
+      <td data-label="角色">${genderText}</td>
+      <td data-label="備註">${o.note ? escapeHtml(o.note) : "-"}</td>
+      <td data-label="付款方式">
         <select class="order-payment-select">
           <option value="糖果" ${o.paymentMethod === "糖果" ? "selected" : ""}>🍬 糖果</option>
           <option value="現金" ${o.paymentMethod === "現金" ? "selected" : ""}>💵 現金</option>
         </select>
       </td>
-      <td>${detail}</td>
-      <td>
+      <td data-label="明細">${detail}</td>
+      <td data-label="總金額">
         <input type="number" class="order-total-edit" min="0" step="1" value="${o.total}" />
       </td>
-      <td>
+      <td data-label="狀態">
         <select class="order-status-select" data-id="${o.id}">
           ${["待確認", "備貨中", "已出貨", "已完成", "已取消"]
             .map((s) => `<option value="${s}" ${s === o.status ? "selected" : ""}>${s}</option>`)
             .join("")}
         </select>
       </td>
-      <td><button class="del">刪除</button></td>
+      <td data-label="操作"><button class="del">刪除</button></td>
     `;
     tr.querySelector(".order-status-select").onchange = (e) => updateOrderStatus(o, e.target.value);
     // 買家下單後如果反悔想改用另一種方式付款（糖果／現金），可以直接在這裡改，
