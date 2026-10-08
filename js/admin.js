@@ -1730,7 +1730,20 @@ async function loadOrders() {
         </div>`;
       })
       .join("");
-    const detail = `<div class="order-items-list">${itemLines}</div>`;
+    // 買家如果有抽轉盤，把抽到的獎項標在明細下面，核對金額時一眼就看得到：
+    // 折扣／折抵類會寫出折了多少、商品小計是多少；贈品類提醒她可以多給一件贈品。
+    let spinTag = "";
+    if (o.spin) {
+      const amt = (n) => (o.paymentMethod === "糖果" ? `${n} 糖果` : `NT$ ${n}`);
+      const detailText =
+        o.spin.discount > 0
+          ? `（折 ${amt(o.spin.discount)}，商品小計 ${amt(o.subtotal)}）`
+          : o.spin.type === "gift"
+            ? "（可多給一件贈品）"
+            : "";
+      spinTag = `<div class="order-spin-tag">🎡 ${escapeHtml(o.spin.label)}${detailText}</div>`;
+    }
+    const detail = `<div class="order-items-list">${itemLines}</div>${spinTag}`;
     const createdAtText = o.createdAt && o.createdAt.toDate ? o.createdAt.toDate().toLocaleString("zh-TW") : "";
     const tr = document.createElement("tr");
     // 「待確認」代表買家送出訂單後，她還沒在 Discord 那邊核對過、也還沒開始處理，
@@ -2024,9 +2037,139 @@ document.getElementById("fStoreDiscountPercent")?.addEventListener("blur", () =>
   }
 });
 
+// ---------- 轉盤抽獎：獎項編輯器 ----------
+// 預設獎項：後台還沒存過獎項時，編輯器先帶這一份讓妳改。
+// js/shop.js 裡有一份一模一樣的 DEFAULT_SPIN_PRIZES（買家端沒存過設定時用），
+// 兩邊要同步——有測試（test-spin-wheel-admin.js）會檢查兩份是不是一致。
+const DEFAULT_SPIN_PRIZES = [
+  { label: "95折", type: "percent", value: 95, weight: 25 },
+  { label: "9折", type: "percent", value: 90, weight: 10 },
+  { label: "贈品一件", type: "gift", weight: 15 },
+  { label: "折抵小額", type: "rebate", value: 5, valueCash: 10, weight: 20 },
+  { label: "銘謝惠顧", type: "none", weight: 30 },
+];
+const SPIN_TYPE_OPTIONS = [
+  ["percent", "折扣（幾折）"],
+  ["rebate", "折抵金額"],
+  ["gift", "贈品一件"],
+  ["none", "銘謝惠顧"],
+];
+
+function syncSpinRowType(row) {
+  const type = row.querySelector(".sp-type").value;
+  const value = row.querySelector(".sp-value");
+  const cash = row.querySelector(".sp-value-cash");
+  value.style.display = type === "percent" || type === "rebate" ? "" : "none";
+  cash.style.display = type === "rebate" ? "" : "none";
+  value.placeholder = type === "percent" ? "折數（90＝9折）" : "糖果折抵";
+  cash.placeholder = "現金折抵";
+}
+
+function addSpinPrizeRow(prize = {}) {
+  const box = document.getElementById("spinPrizeRows");
+  const row = document.createElement("div");
+  row.className = "spin-prize-row";
+  row.innerHTML = `
+    <input class="sp-label" type="text" maxlength="12" placeholder="轉盤上的字" value="${escapeHtml(prize.label || "")}" />
+    <select class="sp-type">
+      ${SPIN_TYPE_OPTIONS.map(([v, t]) => `<option value="${v}" ${(prize.type || "percent") === v ? "selected" : ""}>${t}</option>`).join("")}
+    </select>
+    <input class="sp-value" type="number" step="any" min="0" value="${prize.value ?? ""}" />
+    <input class="sp-value-cash" type="number" step="1" min="0" value="${prize.valueCash ?? ""}" />
+    <input class="sp-weight" type="number" step="1" min="0" placeholder="權重" value="${prize.weight ?? 10}" />
+    <span class="sp-prob"></span>
+    <button type="button" class="sp-del" title="刪除這個獎項">✕</button>
+  `;
+  row.querySelector(".sp-type").onchange = () => { syncSpinRowType(row); updateSpinPrizeHint(); };
+  row.querySelector(".sp-weight").oninput = updateSpinPrizeHint;
+  row.querySelector(".sp-del").onclick = () => { row.remove(); updateSpinPrizeHint(); };
+  syncSpinRowType(row);
+  box.appendChild(row);
+}
+
+function renderSpinPrizeRows(prizes) {
+  document.getElementById("spinPrizeRows").innerHTML = "";
+  prizes.forEach((p) => addSpinPrizeRow(p));
+  updateSpinPrizeHint();
+}
+
+// 讀目前編輯器裡每一列的原始內容（還沒驗證）
+function readSpinPrizeRows() {
+  return Array.from(document.querySelectorAll("#spinPrizeRows .spin-prize-row")).map((row) => ({
+    label: row.querySelector(".sp-label").value.trim(),
+    type: row.querySelector(".sp-type").value,
+    value: row.querySelector(".sp-value").value,
+    valueCash: row.querySelector(".sp-value-cash").value,
+    weight: row.querySelector(".sp-weight").value,
+  }));
+}
+
+// 每個獎項旁邊即時顯示中獎機率，以及目前能出現在轉盤上的獎項數
+function updateSpinPrizeHint() {
+  const rows = Array.from(document.querySelectorAll("#spinPrizeRows .spin-prize-row"));
+  const weights = rows.map((r) => Math.max(0, Number(r.querySelector(".sp-weight").value) || 0));
+  const total = weights.reduce((a, b) => a + b, 0);
+  rows.forEach((r, i) => {
+    r.querySelector(".sp-prob").textContent = total > 0 && weights[i] > 0 ? `${Math.round((weights[i] / total) * 1000) / 10}%` : "不會抽到";
+  });
+  const usable = weights.filter((w) => w > 0).length;
+  const hint = document.getElementById("spinPrizeHint");
+  hint.textContent = usable < 2 ? "⚠️ 至少要有 2 個權重大於 0 的獎項，轉盤才轉得起來" : `共 ${usable} 個獎項會出現在轉盤上`;
+  hint.classList.toggle("warn", usable < 2);
+}
+
+// 把編輯器內容整理成要存進資料庫的獎項清單；有問題就回傳 error 文字（會 alert 給她看）。
+// 折扣類輸入 1~9 當作「幾折」自動換算（9 → 90），跟全館折扣的輸入習慣一致。
+function buildSpinPrizesForSave() {
+  const raw = readSpinPrizeRows();
+  const prizes = [];
+  for (let i = 0; i < raw.length; i++) {
+    const r = raw[i];
+    const n = i + 1;
+    const weight = Number(r.weight);
+    if (!Number.isFinite(weight) || weight < 0) return { error: `第 ${n} 個獎項的權重要是 0 以上的數字` };
+    const prize = { label: r.label, type: r.type, weight };
+    if (r.type === "percent") {
+      let v = Number(r.value);
+      if (v >= 1 && v <= 9) v = v * 10;
+      if (!Number.isFinite(v) || v < 1 || v > 99) return { error: `第 ${n} 個獎項（折扣）的折數要填 1~99 之間，例如 90 代表 9 折` };
+      prize.value = v;
+      if (!prize.label) prize.label = `${formatDiscountTier(v)}折`;
+    } else if (r.type === "rebate") {
+      const candy = Math.floor(Number(r.value) || 0);
+      const cash = Math.floor(Number(r.valueCash) || 0);
+      if (candy < 0 || cash < 0 || (candy === 0 && cash === 0)) return { error: `第 ${n} 個獎項（折抵金額）至少要填糖果或現金其中一種折抵數字` };
+      prize.value = candy;
+      prize.valueCash = cash;
+      if (!prize.label) prize.label = `折抵${candy}糖／${cash}元`;
+    } else if (!prize.label) {
+      prize.label = r.type === "gift" ? "贈品一件" : "銘謝惠顧";
+    }
+    prizes.push(prize);
+  }
+  return { prizes };
+}
+
+document.getElementById("addSpinPrizeBtn").onclick = (e) => {
+  e.preventDefault();
+  addSpinPrizeRow({ type: "percent", weight: 10 });
+  updateSpinPrizeHint();
+};
+
 async function loadSettings() {
   const snap = await getDoc(doc(db, "settings", "main"));
   const settings = snap.exists() ? snap.data() : {};
+  document.getElementById("fSpinEnabled").checked = settings.spinWheelEnabled === true;
+  document.getElementById("fSpinStart").value = settings.spinWheelStart || "";
+  document.getElementById("fSpinEnd").value = settings.spinWheelEnd || "";
+  // 滿額門檻：從來沒設定過的話先帶入 100（之後可以改、也可以清空代表不限）
+  document.getElementById("fSpinMinCandy").value =
+    settings.spinWheelMinCandy === undefined || settings.spinWheelMinCandy === null ? 100 : settings.spinWheelMinCandy || "";
+  document.getElementById("fSpinMinCash").value =
+    settings.spinWheelMinCash === undefined || settings.spinWheelMinCash === null ? 100 : settings.spinWheelMinCash || "";
+  renderSpinPrizeRows(
+    Array.isArray(settings.spinWheelPrizes) && settings.spinWheelPrizes.length > 0 ? settings.spinWheelPrizes : DEFAULT_SPIN_PRIZES
+  );
   document.getElementById("fHeroTitle").value = settings.heroTitle || "";
   document.getElementById("fHeroSub").value = settings.heroSub || "";
   document.getElementById("fHeroTrust").value = settings.heroTrust || "";
@@ -2054,6 +2197,45 @@ async function saveSettings() {
   const genderFemaleOnly = document.getElementById("fGenderFemaleOnly").checked;
   const popupMessage = document.getElementById("fPopupMessage").value;
   const popupEnabled = document.getElementById("fPopupEnabled").checked;
+
+  // 轉盤抽獎：先驗證獎項設定，有問題就停下來告訴她，不要存一份會讓買家端算出怪金額的設定
+  const spinWheelEnabled = document.getElementById("fSpinEnabled").checked;
+  const spinWheelStart = document.getElementById("fSpinStart").value;
+  const spinWheelEnd = document.getElementById("fSpinEnd").value;
+  const spinBuilt = buildSpinPrizesForSave();
+  if (spinBuilt.error) {
+    alert(spinBuilt.error);
+    return;
+  }
+  const spinWheelPrizes = spinBuilt.prizes;
+  if (spinWheelEnabled && spinWheelPrizes.filter((p) => p.weight > 0).length < 2) {
+    alert("轉盤抽獎要至少有 2 個權重大於 0 的獎項才能開啟喔～");
+    return;
+  }
+  if (spinWheelStart && spinWheelEnd && new Date(spinWheelStart) >= new Date(spinWheelEnd)) {
+    alert("轉盤抽獎的結束時間要晚於開始時間。");
+    return;
+  }
+  // 滿額門檻：空白當 0（不限）；只接受 0 以上的整數
+  const readSpinMin = (id, name) => {
+    const raw = document.getElementById(id).value.trim();
+    if (raw === "") return { value: 0 };
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) return { error: `轉盤抽獎「${name}」要填 0 以上的整數（0 或空白＝不限）。` };
+    return { value: n };
+  };
+  const minCandyRes = readSpinMin("fSpinMinCandy", "滿多少糖果才能抽");
+  if (minCandyRes.error) {
+    alert(minCandyRes.error);
+    return;
+  }
+  const minCashRes = readSpinMin("fSpinMinCash", "滿多少現金才能抽");
+  if (minCashRes.error) {
+    alert(minCashRes.error);
+    return;
+  }
+  const spinWheelMinCandy = minCandyRes.value;
+  const spinWheelMinCash = minCashRes.value;
   try {
     await setDoc(
       doc(db, "settings", "main"),
@@ -2070,6 +2252,12 @@ async function saveSettings() {
         genderFemaleOnly,
         popupMessage,
         popupEnabled,
+        spinWheelEnabled,
+        spinWheelStart,
+        spinWheelEnd,
+        spinWheelMinCandy,
+        spinWheelMinCash,
+        spinWheelPrizes,
       },
       { merge: true }
     );

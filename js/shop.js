@@ -160,6 +160,175 @@ function originalPriceFor(item, paymentMethod) {
   return paymentMethod === "糖果" ? item.priceCandy : item.priceCash;
 }
 
+// ---------- 連假轉盤抽獎 ----------
+// 購物車裡有一般商品時，買家可以轉一次轉盤；抽到折扣／折抵會自動算進購物車總金額，
+// 並且把抽中的獎項一起存進訂單（order.spin），後台訂單列表看得到，方便妳核對。
+//
+// 信任模型（跟目前全館折扣、特價一樣）：這個網站沒有後端伺服器，金額是在買家的瀏覽器裡算的，
+// 抽獎結果也是在瀏覽器裡決定的，技術比較強的人理論上有辦法改。所以訂單裡會同時存「商品小計」
+// 跟「抽中的獎項」，妳在後台、還有買家私訊 Discord 截圖時，都可以核對金額對不對得起來。
+//
+// 獎項設定存在 settings/main：spinWheelEnabled（開關）、spinWheelStart／spinWheelEnd（選填，
+// 到期自動關閉）、spinWheelPrizes（獎項清單：label 轉盤上顯示的字、type 種類、value／valueCash 數值、
+// weight 權重＝中獎機率的相對比例）。種類：percent 折扣（value=90 代表 9 折）、
+// rebate 折抵固定金額（value=糖果折抵、valueCash=現金折抵）、gift 贈品一件、none 銘謝惠顧。
+const SPIN_STORAGE_KEY = "mstar_spin_result";
+const SPIN_TYPES = ["percent", "rebate", "gift", "none"];
+// 後台還沒存過獎項時用的預設獎項。js/admin.js 裡有一份一模一樣的（後台編輯器開啟時預設帶入），
+// 兩邊要同步——有測試（test-spin-wheel-admin.js）會檢查兩份是不是一致。
+const DEFAULT_SPIN_PRIZES = [
+  { label: "95折", type: "percent", value: 95, weight: 25 },
+  { label: "9折", type: "percent", value: 90, weight: 10 },
+  { label: "贈品一件", type: "gift", weight: 15 },
+  { label: "折抵小額", type: "rebate", value: 5, valueCash: 10, weight: 20 },
+  { label: "銘謝惠顧", type: "none", weight: 30 },
+];
+let SPIN_CONFIG = { enabled: false, start: null, end: null, minCandy: 0, minCash: 0, prizes: DEFAULT_SPIN_PRIZES };
+// 目前購物車「夠不夠格抽轉盤」（renderCart 每次重算；0 = 沒有滿額門檻）
+let SPIN_GATE = { min: 0, eligible: 0, unlocked: true, missing: 0 };
+let SPIN_SPINNING = false;
+
+function readSpinResult() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SPIN_STORAGE_KEY) || "null");
+    return raw && SPIN_TYPES.includes(raw.type) ? raw : null;
+  } catch (err) {
+    return null;
+  }
+}
+// 這筆訂單已經抽到的結果（沒抽過就是 null）。存在 localStorage，重新整理也不會重抽；
+// 訂單成功送出後會清掉，下一筆訂單才能再抽一次。
+let SPIN_RESULT = readSpinResult();
+
+function saveSpinResult() {
+  if (SPIN_RESULT) localStorage.setItem(SPIN_STORAGE_KEY, JSON.stringify(SPIN_RESULT));
+  else localStorage.removeItem(SPIN_STORAGE_KEY);
+}
+
+// 把後台存的獎項清單整理成「乾淨、保證能算」的格式：種類不認識、權重不是正數、
+// 折數／折抵金額不合理的獎項一律略過，這樣後台萬一打錯，最多是那個獎項不出現，不會算出怪金額。
+function normalizeSpinPrizes(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  raw.forEach((p) => {
+    if (!p || !SPIN_TYPES.includes(p.type)) return;
+    const weight = Number(p.weight);
+    if (!Number.isFinite(weight) || weight <= 0) return;
+    let label = String(p.label || "").trim();
+    const prize = { type: p.type, weight };
+    if (p.type === "percent") {
+      // 跟全館折扣一樣：輸入 1~9 當作「幾折」（9 → 90），其他當作百分比數字
+      let v = Number(p.value);
+      if (v >= 1 && v <= 9) v = v * 10;
+      if (!Number.isFinite(v) || v < 1 || v > 99) return;
+      prize.value = v;
+      if (!label) label = `${formatDiscountTier(v)}折`;
+    } else if (p.type === "rebate") {
+      const candy = Math.max(0, Math.floor(Number(p.value) || 0));
+      const cash = Math.max(0, Math.floor(Number(p.valueCash) || 0));
+      if (candy <= 0 && cash <= 0) return;
+      prize.value = candy;
+      prize.valueCash = cash;
+      if (!label) label = `折抵 ${candy} 糖果／NT$ ${cash}`;
+    } else if (p.type === "gift") {
+      if (!label) label = "贈品一件";
+    } else if (!label) {
+      label = "銘謝惠顧";
+    }
+    prize.label = label;
+    out.push(prize);
+  });
+  return out;
+}
+
+// 贈品獎項要真的兌現得了才放進轉盤：贈品專區有開、而且至少有一件可作為贈品的商品。
+// 不然買家抽到「贈品一件」卻找不到地方選，會變成客訴。
+function spinGiftAvailable() {
+  return GIFT_SECTION_ENABLED && ITEMS.some((i) => i.giftEligible === true);
+}
+
+function getSpinWheelPrizes() {
+  const all = normalizeSpinPrizes(SPIN_CONFIG.prizes);
+  const giftOk = spinGiftAvailable();
+  return all.filter((p) => p.type !== "gift" || giftOk);
+}
+
+// 轉盤現在能不能用：後台有開、（有設定的話）在開始／結束時間內、至少有兩個能出現的獎項。
+function isSpinWheelActive() {
+  if (!SPIN_CONFIG.enabled) return false;
+  const now = new Date();
+  if (SPIN_CONFIG.start) {
+    const s = new Date(SPIN_CONFIG.start);
+    if (!isNaN(s.getTime()) && now < s) return false;
+  }
+  if (SPIN_CONFIG.end) {
+    const e = new Date(SPIN_CONFIG.end);
+    if (!isNaN(e.getTime()) && now > e) return false;
+  }
+  return getSpinWheelPrizes().length >= 2;
+}
+
+// 滿額門檻：看「全館折扣打完、不含代售商品」的商品金額夠不夠，糖果跟現金各設一個數字（0＝不限）。
+function spinMinFor(paymentMethod) {
+  const v = Number(paymentMethod === "糖果" ? SPIN_CONFIG.minCandy : SPIN_CONFIG.minCash);
+  return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
+}
+function spinGateInfo(lines, paymentMethod) {
+  const min = spinMinFor(paymentMethod);
+  const eligible = lines.reduce((s, l) => s + (l.excluded ? 0 : l.lineTotal), 0);
+  return { min, eligible, unlocked: eligible >= min, missing: Math.max(0, min - eligible) };
+}
+
+function randomUnit() {
+  try {
+    const a = new Uint32Array(1);
+    crypto.getRandomValues(a);
+    return a[0] / 4294967296;
+  } catch (err) {
+    return Math.random();
+  }
+}
+
+// 依權重抽一個獎項（權重 3:1 就是 75%:25%）
+function pickSpinPrize(prizes) {
+  const total = prizes.reduce((s, p) => s + p.weight, 0);
+  let r = randomUnit() * total;
+  for (const p of prizes) {
+    if (r < p.weight) return p;
+    r -= p.weight;
+  }
+  return prizes[prizes.length - 1];
+}
+
+// 目前這個購物車「真的會套用」的獎項（已經抽過、而且轉盤現在還在有效期間內），沒有就是 null。
+// 抽到的結果存的是抽當下的快照，這裡再整理一次，避免 localStorage 裡被亂改的數字直接進到金額計算。
+function currentSpinPrize() {
+  if (!SPIN_RESULT || !isSpinWheelActive()) return null;
+  return normalizeSpinPrizes([{ ...SPIN_RESULT, weight: 1 }])[0] || null;
+}
+
+// 計算轉盤折扣金額（整數）。lines：[{ lineTotal, excluded }]，excluded 是「代售商品」——
+// 代售價格是別人訂的，跟全館折扣一樣不能被轉盤折扣動到。
+// 折扣最多只能折到「可折扣金額」、而且整張訂單至少要剩 1，避免抽獎折到變成免費。
+// 轉盤折扣是疊在特價／全館折扣「之後」再折一次。
+function calcSpinDiscount(prize, lines, paymentMethod) {
+  if (!prize) return 0;
+  // 沒滿額（例如抽完之後把商品拿掉）就先不折，補回商品就恢復
+  if (!spinGateInfo(lines, paymentMethod).unlocked) return 0;
+  const subtotal = lines.reduce((s, l) => s + l.lineTotal, 0);
+  const eligible = lines.reduce((s, l) => s + (l.excluded ? 0 : l.lineTotal), 0);
+  if (subtotal <= 1 || eligible <= 0) return 0;
+  let discount = 0;
+  if (prize.type === "percent") {
+    discount = Math.round(eligible * (1 - Number(prize.value) / 100));
+  } else if (prize.type === "rebate") {
+    discount = Math.floor(Number(paymentMethod === "糖果" ? prize.value : prize.valueCash) || 0);
+  } else {
+    return 0;
+  }
+  return Math.max(0, Math.min(discount, eligible, subtotal - 1));
+}
+
 // 特價區：後台幫商品填「特價金額」＋「特價開始/結束時間」，不用另外開關——
 // 只要現在的時間有落在區間內，就自動算是特價中；時間到了（還沒開始，或已經過期）
 // 就自動變回原價、自動從特價區消失，不用手動去改或關掉。
@@ -596,6 +765,17 @@ async function loadAnnouncement() {
 
     GIFT_SECTION_ENABLED = data.giftSectionEnabled === true;
     renderGiftSection();
+
+    // 轉盤抽獎設定：後台沒存過獎項就用預設獎項。讀回來後重畫購物車，抽獎入口才會出現／消失。
+    SPIN_CONFIG = {
+      enabled: data.spinWheelEnabled === true,
+      start: data.spinWheelStart || null,
+      end: data.spinWheelEnd || null,
+      minCandy: Math.max(0, Math.floor(Number(data.spinWheelMinCandy) || 0)),
+      minCash: Math.max(0, Math.floor(Number(data.spinWheelMinCash) || 0)),
+      prizes: Array.isArray(data.spinWheelPrizes) && data.spinWheelPrizes.length > 0 ? data.spinWheelPrizes : DEFAULT_SPIN_PRIZES,
+    };
+    renderCart();
 
     GENDER_FEMALE_ONLY = data.genderFemaleOnly === true;
     applyGenderRestriction();
@@ -1367,10 +1547,14 @@ function renderCart() {
     linesEl.innerHTML = '<div class="cart-empty">購物車是空的，快去挑選家具吧！</div>';
     document.getElementById("totalAmount").innerHTML = "0";
     document.getElementById("checkoutBtn").disabled = true;
+    SPIN_GATE = { min: spinMinFor(PAYMENT_METHOD), eligible: 0, unlocked: spinMinFor(PAYMENT_METHOD) === 0, missing: spinMinFor(PAYMENT_METHOD) };
+    renderSpinUI({ hasItems: false });
     return;
   }
 
   let total = 0;
+  // 轉盤折扣要用的資料：只收「一般購買」的商品（贈品免費不算），excluded 標出代售商品
+  const pricingLines = [];
   linesEl.innerHTML = "";
   ids.forEach((key) => {
     const { id, color } = parseCartKey(key);
@@ -1381,6 +1565,7 @@ function renderCart() {
     const unitPrice = priceFor(item, PAYMENT_METHOD);
     const lineTotal = unitPrice * qty;
     total += lineTotal;
+    pricingLines.push({ lineTotal, excluded: item.excludeFromStoreDiscount === true });
 
     const row = document.createElement("div");
     row.className = "cart-line";
@@ -1429,8 +1614,222 @@ function renderCart() {
     linesEl.appendChild(row);
   });
 
-  document.getElementById("totalAmount").textContent = formatPrice(PAYMENT_METHOD, total);
+  // 轉盤抽到折扣／折抵的話，這裡把折扣扣掉再顯示總金額（結帳時 checkout() 會用同一套算法重算一次）
+  const spinPrize = currentSpinPrize();
+  const spinDiscount = spinPrize ? calcSpinDiscount(spinPrize, pricingLines, PAYMENT_METHOD) : 0;
+  SPIN_GATE = spinGateInfo(pricingLines, PAYMENT_METHOD);
+  document.getElementById("totalAmount").textContent = formatPrice(PAYMENT_METHOD, total - spinDiscount);
   document.getElementById("checkoutBtn").disabled = false;
+  renderSpinUI({ hasItems: pricingLines.length > 0, subtotal: total, discount: spinDiscount, prize: spinPrize, gate: SPIN_GATE });
+}
+
+// ---------- 轉盤畫面 ----------
+function spinAmountText(amount) {
+  return PAYMENT_METHOD === "糖果" ? `${amount} 糖果` : `NT$ ${amount}`;
+}
+
+// 購物車裡「抽獎入口」跟「抽到什麼」的小區塊。轉盤沒開、或購物車沒有一般商品時整塊藏起來。
+function renderSpinUI({ hasItems, subtotal, discount, prize, gate }) {
+  const block = document.getElementById("spinBlock");
+  const summary = document.getElementById("spinSummary");
+  if (!block || !summary) return;
+
+  if (!hasItems || !isSpinWheelActive()) {
+    block.style.display = "none";
+    block.innerHTML = "";
+    summary.style.display = "none";
+    summary.innerHTML = "";
+    return;
+  }
+
+  block.style.display = "block";
+  const g = gate || SPIN_GATE;
+  const locked = g.min > 0 && !g.unlocked;
+  if (!SPIN_RESULT) {
+    if (locked) {
+      block.innerHTML = `
+      <div class="spin-promo spin-promo-locked">
+        <div class="spin-promo-text">🎡 <b>轉盤抽獎</b><span>商品滿 ${escapeHtml(spinAmountText(g.min))} 就能抽一次，<b>再買 ${escapeHtml(spinAmountText(g.missing))}</b> 就能轉！</span></div>
+        <button type="button" class="spin-open-btn ghost" id="spinOpenBtn" disabled>未達門檻</button>
+      </div>`;
+    } else {
+      const lead = g.min > 0 ? `已滿 ${spinAmountText(g.min)}，可以抽一次，中獎自動折抵！` : "購物車有商品就能抽一次，中獎自動折抵！";
+      block.innerHTML = `
+      <div class="spin-promo">
+        <div class="spin-promo-text">🎡 <b>轉盤抽獎</b><span>${escapeHtml(lead)}</span></div>
+        <button type="button" class="spin-open-btn" id="spinOpenBtn">去抽獎</button>
+      </div>`;
+    }
+  } else {
+    const pausedText = locked ? `<span>商品要滿 ${escapeHtml(spinAmountText(g.min))} 才生效，再買 ${escapeHtml(spinAmountText(g.missing))} 就恢復</span>` : "";
+    block.innerHTML = `
+      <div class="spin-promo spin-promo-done${locked ? " spin-promo-locked" : ""}">
+        <div class="spin-promo-text">🎡 已抽中：<b>${escapeHtml(SPIN_RESULT.label)}</b>${pausedText}</div>
+        <button type="button" class="spin-open-btn ghost" id="spinOpenBtn">看結果</button>
+      </div>`;
+  }
+  document.getElementById("spinOpenBtn").onclick = openSpinModal;
+
+  if (!prize) {
+    summary.style.display = "none";
+    summary.innerHTML = "";
+    return;
+  }
+  let html = "";
+  if (locked) {
+    html = `<div class="spin-summary-line"><span>🎡 ${escapeHtml(prize.label)}（暫停）</span><span>再買 ${escapeHtml(spinAmountText(g.missing))} 恢復</span></div>`;
+  } else if ((prize.type === "percent" || prize.type === "rebate") && discount > 0) {
+    html =
+      `<div class="spin-summary-line"><span>商品小計</span><span>${spinAmountText(subtotal)}</span></div>` +
+      `<div class="spin-summary-line spin-discount"><span>🎡 ${escapeHtml(prize.label)}</span><span>−${spinAmountText(discount)}</span></div>`;
+  } else if (prize.type === "percent" || prize.type === "rebate") {
+    html = `<div class="spin-summary-line"><span>🎡 ${escapeHtml(prize.label)}</span><span>購物車內商品不適用折扣</span></div>`;
+  } else if (prize.type === "gift") {
+    html = `<div class="spin-summary-line spin-discount"><span>🎡 抽中：${escapeHtml(prize.label)}</span><span>請到「贈品專區」加入一件</span></div>`;
+  } else {
+    html = `<div class="spin-summary-line"><span>🎡 ${escapeHtml(prize.label)}</span><span>下次再來～</span></div>`;
+  }
+  summary.innerHTML = html;
+  summary.style.display = "block";
+}
+
+// 轉盤配色：深色寶石色，跟深色網站搭，白字都讀得清楚
+const SPIN_COLORS = ["#7c3aed", "#0f9d8f", "#d6336c", "#2563eb", "#d97706", "#16a34a"];
+const SPIN_BULB_COUNT = 20;
+
+function buildSpinWheel(prizes) {
+  const wheel = document.getElementById("spinWheel");
+  const rim = document.getElementById("spinRim");
+  if (rim && !rim.firstChild) {
+    // 外圈燈泡：只建一次，放在半徑 (外圈寬度一半) 的位置
+    let bulbs = "";
+    for (let i = 0; i < SPIN_BULB_COUNT; i++) {
+      const a = (i * 360) / SPIN_BULB_COUNT;
+      bulbs += `<span class="spin-bulb" style="left:${50 + 46.6 * Math.sin((a * Math.PI) / 180)}%;top:${50 - 46.6 * Math.cos((a * Math.PI) / 180)}%"></span>`;
+    }
+    rim.innerHTML = bulbs;
+  }
+  const n = prizes.length;
+  const seg = 360 / n;
+  const colorFor = (i) => {
+    // 最後一塊如果剛好跟第一塊同色（會黏在一起分不出來），換一個顏色
+    if (i === n - 1 && n > 1 && i % SPIN_COLORS.length === 0) return SPIN_COLORS[1];
+    return SPIN_COLORS[i % SPIN_COLORS.length];
+  };
+  const stops = prizes.map((p, i) => `${colorFor(i)} ${i * seg}deg ${(i + 1) * seg}deg`).join(", ");
+  // 上面疊一層細白線當作每格的分隔線
+  const lines = `repeating-conic-gradient(from -0.6deg, rgba(255,255,255,0.55) 0deg 1.2deg, transparent 1.2deg ${seg}deg)`;
+  wheel.style.background = `${lines}, conic-gradient(${stops})`;
+  // 字數多就縮小字，避免超出轉盤
+  const sizeFor = (label) => {
+    const len = Array.from(String(label)).length;
+    if (len <= 3) return 20;
+    if (len <= 4) return 17;
+    if (len <= 5) return 15;
+    if (len <= 7) return 12;
+    return 10;
+  };
+  wheel.innerHTML = prizes
+    .map(
+      (p, i) =>
+        `<div class="spin-label" style="transform: rotate(${i * seg + seg / 2}deg)"><span class="${i * seg + seg / 2 > 180 ? "flip" : ""}" style="font-size:${sizeFor(p.label)}px">${escapeHtml(p.label)}</span></div>`
+    )
+    .join("");
+}
+
+function setSpinWheelRotation(deg, durationMs) {
+  const wheel = document.getElementById("spinWheel");
+  wheel.style.transition = durationMs > 0 ? `transform ${durationMs}ms cubic-bezier(0.12, 0.6, 0.12, 1)` : "none";
+  wheel.style.transform = `rotate(${deg}deg)`;
+}
+
+// 抽獎結果的說明文字（轉盤下方顯示）
+function spinResultMessage(result) {
+  if (result.type === "none") return `😢 ${result.label}，下次再來！`;
+  if (result.type === "gift") return `🎁 抽中「${result.label}」！請到「贈品專區」加入一件免費贈品`;
+  return `🎉 抽中「${result.label}」！已自動折抵在購物車裡`;
+}
+
+function openSpinModal() {
+  const overlay = document.getElementById("spinOverlay");
+  if (!overlay) return;
+  const prizes = getSpinWheelPrizes();
+  if (prizes.length < 2) return;
+  buildSpinWheel(prizes);
+  const noteEl = document.getElementById("spinNote");
+  if (noteEl) {
+    const m = spinMinFor(PAYMENT_METHOD);
+    noteEl.textContent =
+      "每筆訂單可以抽一次，中獎會自動折抵在購物車金額裡。" + (m > 0 ? `商品要滿 ${spinAmountText(m)}（全館折扣後、不含代售）才能抽。` : "");
+  }
+  const goBtn = document.getElementById("spinGoBtn");
+  const resultEl = document.getElementById("spinResultText");
+  if (SPIN_RESULT) {
+    // 已經抽過：轉盤停在抽到的那一格，只顯示結果、不能再轉
+    const idx = prizes.findIndex((p) => p.label === SPIN_RESULT.label && p.type === SPIN_RESULT.type);
+    if (idx >= 0) setSpinWheelRotation(360 - (idx * (360 / prizes.length) + 360 / prizes.length / 2), 0);
+    else setSpinWheelRotation(0, 0);
+    resultEl.textContent = spinResultMessage(SPIN_RESULT);
+    resultEl.classList.toggle("won", SPIN_RESULT.type !== "none");
+    goBtn.style.display = "none";
+  } else {
+    setSpinWheelRotation(0, 0);
+    resultEl.classList.remove("won");
+    resultEl.textContent = "按下去，看看今天手氣如何 ✨";
+    goBtn.style.display = "";
+    goBtn.disabled = false;
+  }
+  overlay.style.display = "flex";
+}
+
+function closeSpinModal() {
+  const overlay = document.getElementById("spinOverlay");
+  if (overlay) overlay.style.display = "none";
+}
+
+function startSpin() {
+  if (SPIN_RESULT || SPIN_SPINNING) return;
+  const resultEl = document.getElementById("spinResultText");
+  const goBtn = document.getElementById("spinGoBtn");
+  if (Object.keys(CART).length === 0) {
+    resultEl.textContent = "請先把商品加入購物車再來抽獎喔～";
+    return;
+  }
+  if (SPIN_GATE.min > 0 && !SPIN_GATE.unlocked) {
+    resultEl.textContent = `商品滿 ${spinAmountText(SPIN_GATE.min)} 才能抽，再買 ${spinAmountText(SPIN_GATE.missing)} 就可以囉～`;
+    return;
+  }
+  const prizes = getSpinWheelPrizes();
+  if (prizes.length < 2) return;
+
+  // 先決定結果、馬上存起來，再播動畫——這樣動畫播到一半重新整理也不會重抽。
+  const prize = pickSpinPrize(prizes);
+  SPIN_RESULT = { label: prize.label, type: prize.type, value: prize.value ?? null, valueCash: prize.valueCash ?? null, at: Date.now() };
+  saveSpinResult();
+  SPIN_SPINNING = true;
+  goBtn.disabled = true;
+  resultEl.textContent = "轉轉轉⋯⋯";
+
+  const idx = prizes.indexOf(prize);
+  const seg = 360 / prizes.length;
+  // 指針固定在最上面；要讓第 idx 格的中心停在最上面，轉盤要順時針轉到 (360 - 該格中心角度)。
+  // 再加一點隨機偏移（不要每次都停在格子正中央），並多轉幾圈增加氣氛。
+  const jitter = (randomUnit() - 0.5) * seg * 0.6;
+  const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const duration = reduceMotion ? 400 : 4200;
+  const turns = reduceMotion ? 1 : 5;
+  const target = turns * 360 + (360 - (idx * seg + seg / 2)) + jitter;
+  setSpinWheelRotation(0, 0);
+  void document.getElementById("spinWheel").offsetWidth; // 強制重算版面，讓下面的轉動動畫從 0 度開始
+  setSpinWheelRotation(target, duration);
+
+  setTimeout(() => {
+    SPIN_SPINNING = false;
+    resultEl.textContent = spinResultMessage(SPIN_RESULT);
+    resultEl.classList.toggle("won", SPIN_RESULT.type !== "none");
+    goBtn.style.display = "none";
+    renderCart();
+  }, duration + 100);
 }
 
 // 下單：用 Firestore 交易（transaction）在買家自己的瀏覽器裡送出，
@@ -1480,6 +1879,8 @@ async function checkout() {
       // 沒有顏色款式的商品，cartKey 就等於純 id，所以這一套邏輯跟原本沒有顏色款式的商品完全相容。
       const combinedQtyByKey = {};
       let total = 0;
+      // 轉盤折扣用：跟購物車畫面（renderCart）同一套算法，用「送出當下重新讀到的最新價格」來算
+      const pricingLines = [];
 
       allEntries.forEach((entry) => {
         const snap = snapById[entry.id];
@@ -1500,6 +1901,7 @@ async function checkout() {
         const unitPrice = entry.isGift ? 0 : priceFor(item, PAYMENT_METHOD);
         const lineTotal = unitPrice * entry.qty;
         total += lineTotal;
+        if (!entry.isGift) pricingLines.push({ lineTotal, excluded: item.excludeFromStoreDiscount === true });
         orderItems.push({
           id: entry.id,
           name: item.name,
@@ -1510,6 +1912,24 @@ async function checkout() {
           isGift: entry.isGift,
         });
       });
+
+      // 轉盤抽到折扣／折抵：從商品小計扣掉。訂單裡另外存「商品小計」跟「抽中的獎項」，
+      // 後台訂單列表會顯示，妳可以核對金額是怎麼算出來的。
+      const subtotal = total;
+      // 沒滿額門檻（例如抽完之後把商品拿掉）就當作沒有這個獎項：不折扣、也不記在訂單上
+      const spinGate = spinGateInfo(pricingLines, PAYMENT_METHOD);
+      const spinPrize = spinGate.unlocked ? currentSpinPrize() : null;
+      const spinDiscount = spinPrize ? calcSpinDiscount(spinPrize, pricingLines, PAYMENT_METHOD) : 0;
+      total = subtotal - spinDiscount;
+      const spinRecord = spinPrize
+        ? {
+            label: spinPrize.label,
+            type: spinPrize.type,
+            value: spinPrize.value ?? null,
+            valueCash: spinPrize.valueCash ?? null,
+            discount: spinDiscount,
+          }
+        : null;
 
       const orderRef = doc(collection(db, "orders"));
       tx.set(orderRef, {
@@ -1522,6 +1942,7 @@ async function checkout() {
         paymentMethod: PAYMENT_METHOD,
         total,
         status: "待確認",
+        ...(spinRecord ? { subtotal, spin: spinRecord } : {}),
       });
 
       // 同一件商品可能同時扣好幾個顏色的庫存，但 Firestore transaction 對同一份文件多次 tx.update()
@@ -1545,13 +1966,19 @@ async function checkout() {
         }
       });
 
-      return { id: orderRef.id, total, paymentMethod: PAYMENT_METHOD, items: orderItems };
+      return { id: orderRef.id, total, subtotal, spin: spinRecord, paymentMethod: PAYMENT_METHOD, items: orderItems };
     });
 
     CART = {};
     GIFT_CART = {};
     saveCart();
     saveGiftCart();
+    // 這筆訂單的轉盤結果「真的用掉了」才清掉，下一筆訂單才能再抽一次；
+    // 如果這筆沒達到滿額門檻、轉盤沒有生效，就保留，不要讓買家白白浪費掉。
+    if (result.spin) {
+      SPIN_RESULT = null;
+      saveSpinResult();
+    }
     renderCart();
     await loadItems();
     msgBox.innerHTML = "";
@@ -1566,8 +1993,22 @@ async function checkout() {
 
 // 送出訂單後跳出一個「乾淨」的訂單畫面（不含商品列表、篩選按鈕等雜訊），
 // 買家只要截這個畫面就好，不用截整個網頁。
-function showOrderSummary({ id, total, paymentMethod, items, buyerName, contact, note, characterGender }) {
+function showOrderSummary({ id, total, subtotal, spin, paymentMethod, items, buyerName, contact, note, characterGender }) {
   const totalText = formatPrice(paymentMethod, total);
+  const amountText = (n) => (paymentMethod === "糖果" ? `${n} 糖果` : `NT$ ${n}`);
+  // 轉盤：買家截這張圖私訊 Discord 時，妳一眼就能核對他抽到什麼、折了多少
+  let spinHtml = "";
+  if (spin) {
+    if (spin.discount > 0) {
+      spinHtml =
+        `<div class="order-summary-row"><span>商品小計</span><span>${amountText(subtotal)}</span></div>` +
+        `<div class="order-summary-row order-summary-spin"><span>🎡 ${escapeHtml(spin.label)}</span><span>−${amountText(spin.discount)}</span></div>`;
+    } else if (spin.type === "gift") {
+      spinHtml = `<div class="order-summary-row order-summary-spin"><span>🎡 轉盤抽中</span><span>${escapeHtml(spin.label)}（可多選一件贈品）</span></div>`;
+    } else {
+      spinHtml = `<div class="order-summary-row"><span>🎡 轉盤</span><span>${escapeHtml(spin.label)}</span></div>`;
+    }
+  }
   const itemsHtml = items
     .map((i) => {
       const lineText = i.isGift ? "🎁 贈品" : paymentMethod === "糖果" ? `${i.price * i.qty} 糖果` : `NT$ ${i.price * i.qty}`;
@@ -1589,6 +2030,7 @@ function showOrderSummary({ id, total, paymentMethod, items, buyerName, contact,
     ${note ? `<div class="order-summary-row"><span>備註</span><span>${note}</span></div>` : ""}
     <div class="order-summary-row"><span>付款方式</span><span>${paymentMethod === "糖果" ? "🍬 糖果" : "💵 現金"}</span></div>
     <div class="order-summary-items">${itemsHtml}</div>
+    ${spinHtml}
     <div class="order-summary-total"><span>總金額</span><span>${totalText}</span></div>
   `;
   document.getElementById("orderSummaryBody")
@@ -1718,6 +2160,12 @@ document.getElementById("searchBox").addEventListener("input", (e) => {
 });
 
 document.getElementById("checkoutBtn").addEventListener("click", checkout);
+document.getElementById("spinGoBtn")?.addEventListener("click", startSpin);
+document.getElementById("spinCloseBtn")?.addEventListener("click", closeSpinModal);
+document.getElementById("spinOverlay")?.addEventListener("click", (e) => {
+  // 點背景（不是點轉盤卡片本身）就關閉
+  if (e.target.id === "spinOverlay") closeSpinModal();
+});
 document.getElementById("seriesNewestBtn")?.addEventListener("click", () => setSeriesOrder("newest"));
 document.getElementById("seriesOldestBtn")?.addEventListener("click", () => setSeriesOrder("oldest"));
 document.getElementById("backToAllBtn")?.addEventListener("click", closeSpecialView);
@@ -1748,7 +2196,10 @@ document.getElementById("imageLightboxOverlay")?.addEventListener("click", (e) =
   if (e.target.id === "imageLightboxOverlay") closeImageLightbox();
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") closeImageLightbox();
+  if (e.key === "Escape") {
+    closeImageLightbox();
+    closeSpinModal();
+  }
 });
 document.getElementById("backToTopBtn")?.addEventListener("click", () => window.scrollTo({top:0,behavior:"smooth"}));
 Promise.all([loadItems(), loadSeries(), loadAuctions(), loadExchangeItems()]);
