@@ -2513,3 +2513,20 @@ tr:hover td { background: rgba(255,255,255,.018); }
 @media (max-width: 600px) {
   .spin-promo-banner { font-size: 13px; padding: 10px 16px; }
 }
+
+/* 轉盤音效開關（左上角） */
+.spin-sound-btn {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.spin-sound-btn.off { opacity: 0.6; }
