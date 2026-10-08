@@ -1796,6 +1796,115 @@ function setSpinWheelRotation(deg, durationMs) {
   wheel.style.transform = `rotate(${deg}deg)`;
 }
 
+// ---------- 轉盤音效（用瀏覽器內建的 Web Audio 合成，不需要任何聲音檔） ----------
+// 轉動時每經過一格會「答」一聲、越轉越慢；停下來依結果播中獎／銘謝惠顧的音效。
+// 手機瀏覽器規定要「使用者點了按鈕」才能出聲，所以音效是在按下「開始轉」那一刻才啟動。
+const SPIN_SOUND_KEY = "mstar_spin_sound";
+let SPIN_AUDIO = null;
+
+function spinSoundOn() {
+  try {
+    return localStorage.getItem(SPIN_SOUND_KEY) !== "off";
+  } catch (err) {
+    return true;
+  }
+}
+function renderSpinSoundBtn() {
+  const btn = document.getElementById("spinSoundBtn");
+  if (!btn) return;
+  const on = spinSoundOn();
+  btn.textContent = on ? "🔊" : "🔇";
+  btn.classList.toggle("off", !on);
+  btn.setAttribute("aria-pressed", on ? "true" : "false");
+}
+function unlockSpinAudio() {
+  if (!spinSoundOn()) return null;
+  try {
+    if (!SPIN_AUDIO) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null;
+      SPIN_AUDIO = new Ctx();
+    }
+    if (SPIN_AUDIO.state === "suspended" && SPIN_AUDIO.resume) SPIN_AUDIO.resume();
+    return SPIN_AUDIO;
+  } catch (err) {
+    return null;
+  }
+}
+// 單一音：頻率 freq、長度 dur 秒、音量 vol，可以延後 delay 秒才響
+function spinBeep(freq, dur, { type = "triangle", vol = 0.12, delay = 0 } = {}) {
+  const ctx = SPIN_AUDIO;
+  if (!ctx || !spinSoundOn()) return;
+  try {
+    const t0 = ctx.currentTime + delay;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.linearRampToValueAtTime(vol, t0 + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.02);
+  } catch (err) {
+    // 音效壞掉不影響抽獎
+  }
+}
+function playSpinTick() {
+  spinBeep(1500, 0.045, { type: "square", vol: 0.05 });
+}
+function playSpinResultSound(type) {
+  if (type === "none") {
+    spinBeep(392, 0.22, { delay: 0, vol: 0.14 });
+    spinBeep(294, 0.4, { delay: 0.2, vol: 0.14 });
+  } else {
+    // 中獎：往上跳的 do-mi-sol-高do 小號聲
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => spinBeep(f, i === 3 ? 0.7 : 0.18, { delay: i * 0.13, vol: 0.16 }));
+    spinBeep(1318.5, 0.5, { delay: 0.52, vol: 0.08 });
+  }
+}
+// 轉動期間，每當轉盤上的格線經過最上面的指針就「答」一聲。
+// 用 requestAnimationFrame 讀轉盤目前的實際角度（跟畫面同步），所以越轉越慢、聲音也跟著變稀。
+function startSpinTicks(segDeg, durationMs) {
+  const wheel = document.getElementById("spinWheel");
+  if (!wheel || !spinSoundOn() || !SPIN_AUDIO) return;
+  let prevRaw = null;
+  let unwrapped = 0;
+  let lastCount = 0;
+  let lastTickAt = 0;
+  const startedAt = performance.now();
+  const readAngle = () => {
+    const m = /matrix\(([^)]+)\)/.exec(getComputedStyle(wheel).transform || "");
+    if (!m) return 0;
+    const [a, b] = m[1].split(",").map(Number);
+    return (Math.atan2(b, a) * 180) / Math.PI;
+  };
+  const frame = (now) => {
+    if (!SPIN_SPINNING || now - startedAt > durationMs + 200) return;
+    const raw = readAngle();
+    if (prevRaw !== null) {
+      let d = raw - prevRaw;
+      if (d < -180) d += 360;
+      if (d > 180) d -= 360;
+      unwrapped += d;
+    }
+    prevRaw = raw;
+    const count = Math.floor(unwrapped / segDeg);
+    if (count !== lastCount) {
+      // 轉太快時一個畫面可能跨好幾格，最多還是只響一聲，而且兩聲之間至少隔 35 毫秒避免糊成一團
+      if (now - lastTickAt >= 35) {
+        playSpinTick();
+        lastTickAt = now;
+      }
+      lastCount = count;
+    }
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+
 // 抽獎結果的說明文字（轉盤下方顯示）
 function spinResultMessage(result) {
   if (result.type === "none") return `😢 ${result.label}，下次再來！`;
@@ -1832,6 +1941,7 @@ function openSpinModal() {
     goBtn.style.display = "";
     goBtn.disabled = false;
   }
+  renderSpinSoundBtn();
   overlay.style.display = "flex";
 }
 
@@ -1867,6 +1977,7 @@ function startSpin() {
   const seg = 360 / prizes.length;
   // 指針固定在最上面；要讓第 idx 格的中心停在最上面，轉盤要順時針轉到 (360 - 該格中心角度)。
   // 再加一點隨機偏移（不要每次都停在格子正中央），並多轉幾圈增加氣氛。
+  unlockSpinAudio(); // 這裡是在使用者點「開始轉」的事件裡，手機才允許出聲
   const jitter = (randomUnit() - 0.5) * seg * 0.6;
   const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const duration = reduceMotion ? 400 : 4200;
@@ -1875,9 +1986,11 @@ function startSpin() {
   setSpinWheelRotation(0, 0);
   void document.getElementById("spinWheel").offsetWidth; // 強制重算版面，讓下面的轉動動畫從 0 度開始
   setSpinWheelRotation(target, duration);
+  startSpinTicks(seg, duration);
 
   setTimeout(() => {
     SPIN_SPINNING = false;
+    playSpinResultSound(SPIN_RESULT.type);
     resultEl.textContent = spinResultMessage(SPIN_RESULT);
     resultEl.classList.toggle("won", SPIN_RESULT.type !== "none");
     goBtn.style.display = "none";
@@ -2215,6 +2328,19 @@ document.getElementById("searchBox").addEventListener("input", (e) => {
 document.getElementById("checkoutBtn").addEventListener("click", checkout);
 document.getElementById("spinGoBtn")?.addEventListener("click", startSpin);
 document.getElementById("spinCloseBtn")?.addEventListener("click", closeSpinModal);
+document.getElementById("spinSoundBtn")?.addEventListener("click", () => {
+  try {
+    localStorage.setItem(SPIN_SOUND_KEY, spinSoundOn() ? "off" : "on");
+  } catch (err) {
+    // 瀏覽器不讓存就算了，這次先維持原狀
+  }
+  renderSpinSoundBtn();
+  if (spinSoundOn()) {
+    // 打開音效時先響一聲，讓她知道有開
+    unlockSpinAudio();
+    playSpinTick();
+  }
+});
 document.getElementById("spinOverlay")?.addEventListener("click", (e) => {
   // 點背景（不是點轉盤卡片本身）就關閉
   if (e.target.id === "spinOverlay") closeSpinModal();
