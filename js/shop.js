@@ -1628,15 +1628,68 @@ function spinAmountText(amount) {
   return PAYMENT_METHOD === "糖果" ? `${amount} 糖果` : `NT$ ${amount}`;
 }
 
+// 「商品滿 100 糖果（現金滿 NT$ 100）」這種門檻說明；沒設門檻就回傳空字串。
+function spinThresholdText() {
+  const c = spinMinFor("糖果");
+  const m = spinMinFor("現金");
+  if (c && m) return `商品滿 ${c} 糖果（現金滿 NT$ ${m}）`;
+  if (c) return `商品滿 ${c} 糖果`;
+  if (m) return `商品滿 NT$ ${m}`;
+  return "";
+}
+
+// 網站上方的轉盤活動宣傳橫幅：轉盤有開、在活動時間內才顯示，時間到自動消失。
+function renderSpinBanner() {
+  const banner = document.getElementById("spinPromoBanner");
+  if (!banner) return;
+  if (!isSpinWheelActive()) {
+    banner.style.display = "none";
+    return;
+  }
+  const thr = spinThresholdText();
+  // 有折扣類獎項的話，順便寫出「最高幾折」勾起興趣
+  const pcts = getSpinWheelPrizes().filter((p) => p.type === "percent").map((p) => p.value);
+  const best = pcts.length ? `最高 ${formatDiscountTier(Math.min(...pcts))} 折，` : "";
+  let endText = "";
+  if (SPIN_CONFIG.end) {
+    const e = new Date(SPIN_CONFIG.end);
+    if (!isNaN(e.getTime())) endText = `　⏰ 活動至 ${e.getMonth() + 1}/${e.getDate()} ${String(e.getHours()).padStart(2, "0")}:${String(e.getMinutes()).padStart(2, "0")}`;
+  }
+  document.getElementById("spinPromoBannerText").textContent =
+    `幸運轉盤開跑！${thr ? thr + "加入購物車" : "把商品加入購物車"}就能轉，${best}中獎自動折抵${endText}`;
+  const btn = document.getElementById("spinPromoBannerBtn");
+  btn.onclick = () => {
+    const cart = document.querySelector(".cart-panel");
+    if (cart) cart.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  banner.style.display = "flex";
+}
+
 // 購物車裡「抽獎入口」跟「抽到什麼」的小區塊。轉盤沒開、或購物車沒有一般商品時整塊藏起來。
 function renderSpinUI({ hasItems, subtotal, discount, prize, gate }) {
   const block = document.getElementById("spinBlock");
   const summary = document.getElementById("spinSummary");
   if (!block || !summary) return;
 
-  if (!hasItems || !isSpinWheelActive()) {
+  renderSpinBanner();
+
+  if (!isSpinWheelActive()) {
     block.style.display = "none";
     block.innerHTML = "";
+    summary.style.display = "none";
+    summary.innerHTML = "";
+    return;
+  }
+
+  if (!hasItems) {
+    // 購物車還沒有商品：也要讓買家知道有這個活動，並告訴他怎麼玩
+    const thr = spinThresholdText();
+    block.style.display = "block";
+    block.innerHTML = `
+      <div class="spin-promo spin-promo-locked">
+        <div class="spin-promo-text">🎡 <b>轉盤抽獎</b><span>${escapeHtml(thr ? thr + "加入購物車就能抽一次，中獎自動折抵！" : "把商品加入購物車就能抽一次，中獎自動折抵！")}</span></div>
+        <button type="button" class="spin-open-btn ghost" disabled>先逛逛</button>
+      </div>`;
     summary.style.display = "none";
     summary.innerHTML = "";
     return;
