@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>蘇蘇家具商店</title>
-<link rel="stylesheet" href="css/style.css?v=926-20260927-8" />
+<link rel="stylesheet" href="css/style.css?v=1008-20261008-1" />
 </head>
 <body>
   <header class="topbar">
@@ -152,6 +152,8 @@
       </div>
 
       <div id="cartLines"><div class="cart-empty">購物車是空的，快去挑選家具吧！</div></div>
+      <div id="spinBlock" class="spin-block" style="display:none;"></div>
+      <div id="spinSummary" class="spin-summary" style="display:none;"></div>
       <div class="total-row"><span>總金額</span><span id="totalAmount">0</span></div>
 
       <div class="pay-method-block">
@@ -170,6 +172,23 @@
       <div class="checkout-hint">📸 送出後會出現訂單畫面，按「截圖並複製」就能直接貼到 Discord 給賣家確認訂單！</div>
       <div id="msgBox"></div>
     </aside>
+  </div>
+
+  <div id="spinOverlay" class="spin-overlay" style="display:none;">
+    <div class="spin-card" role="dialog" aria-modal="true" aria-label="轉盤抽獎">
+      <button type="button" class="spin-close" id="spinCloseBtn" aria-label="關閉">✕</button>
+      <div class="spin-title">🎡 幸運轉盤</div>
+      <div class="spin-sub">LUCKY SPIN</div>
+      <div class="spin-stage">
+        <div class="spin-rim" id="spinRim"></div>
+        <div class="spin-pointer"></div>
+        <div class="spin-wheel" id="spinWheel"></div>
+        <div class="spin-hub">GO</div>
+      </div>
+      <div class="spin-result" id="spinResultText"></div>
+      <button type="button" class="spin-go-btn" id="spinGoBtn">開始轉！</button>
+      <div class="spin-note" id="spinNote">每筆訂單可以抽一次，中獎會自動折抵在購物車金額裡。</div>
+    </div>
   </div>
 
   <div id="orderSummaryOverlay" class="order-summary-overlay" style="display:none;">
@@ -202,7 +221,7 @@
 
 
   <script src="js/vendor/html2canvas.min.js?v=817-20260817-3"></script>
-  <script type="module" src="js/shop.js?v=925-20260925-7"></script>
+  <script type="module" src="js/shop.js?v=1008-20261008-1"></script>
   <button type="button" id="backToTopBtn" class="back-to-top" aria-label="回到頂端">↑</button>
 
 

@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>蘇蘇家具商店 - 後台管理</title>
-<link rel="stylesheet" href="css/style.css?v=926-20260927-8" />
+<link rel="stylesheet" href="css/style.css?v=1008-20261008-1" />
 </head>
 <body>
   <header class="topbar">
@@ -364,6 +364,40 @@
         <div class="flag-row" style="padding-bottom:4px;">
           <label><input type="checkbox" id="fGiftSectionEnabled" /> 🎁 開啟贈品專區（買家頁面會顯示「贈品專區」區塊，隨時可以關掉）</label>
         </div>
+        <div class="spin-admin-box">
+          <label>🎡 轉盤抽獎（買家購物車裡有商品時可以轉一次，中獎會自動折抵在金額裡；抽到什麼會記在訂單上，訂單管理看得到，方便核對）</label>
+          <div class="flag-row" style="padding-bottom:4px;">
+            <label><input type="checkbox" id="fSpinEnabled" /> 🎡 開啟轉盤抽獎（沒勾就不會出現）</label>
+          </div>
+          <div class="spin-time-row">
+            <div>
+              <label class="sub-label">開始時間（選填，沒填就是現在開始）</label>
+              <input id="fSpinStart" type="datetime-local" />
+            </div>
+            <div>
+              <label class="sub-label">結束時間（選填；填了時間到會自動關閉，連假結束不用記得手動關）</label>
+              <input id="fSpinEnd" type="datetime-local" />
+            </div>
+          </div>
+          <div class="spin-time-row" style="margin-top:10px;">
+            <div>
+              <label class="sub-label">滿多少糖果才能抽（買家用「糖果」付款時；0 或空白＝不限）</label>
+              <input id="fSpinMinCandy" type="number" min="0" step="1" inputmode="numeric" placeholder="例如 100" />
+            </div>
+            <div>
+              <label class="sub-label">滿多少現金（NT$）才能抽（買家用「現金」付款時；0 或空白＝不限）</label>
+              <input id="fSpinMinCash" type="number" min="0" step="1" inputmode="numeric" placeholder="例如 100" />
+            </div>
+          </div>
+          <div class="spin-prize-note" style="margin-top:4px;">門檻是看「全館折扣打完之後、不含代售商品」的商品金額。金額沒到門檻時，買家會看到「再買多少就能抽」；已經抽到獎之後如果把商品拿掉、金額掉到門檻以下，轉盤折扣會先暫停，補回商品就恢復。</div>
+          <label class="sub-label" style="margin-top:10px;">獎項（轉盤上每格大小一樣，中獎機率看「權重」：權重 ÷ 全部權重加總；權重填 0 就不會抽到。轉盤上的字建議 5 個字以內）</label>
+          <div id="spinPrizeRows" class="spin-prize-rows"></div>
+          <div class="spin-prize-footer">
+            <button type="button" id="addSpinPrizeBtn" class="secondary-btn">＋ 新增獎項</button>
+            <span id="spinPrizeHint" class="spin-prize-hint"></span>
+          </div>
+          <div class="spin-prize-note">⚠️ 轉盤折扣是疊在「特價」跟「全館折扣」之後再折一次（例如全館 8 折再抽到 9 折，等於 7.2 折）；代售商品不會被轉盤折扣。折抵類獎項最多折到只剩 1，不會折到免費。「贈品一件」要贈品專區有開、而且有可作為贈品的商品才會出現在轉盤上。</div>
+        </div>
         <div class="flag-row" style="padding-bottom:4px;">
           <label><input type="checkbox" id="fGenderFemaleOnly" /> 🙍‍♀️ 僅限女角模式（開啟後買家頁面只能選女角，男角按鈕會隱藏，女角按鈕會顯示「限女角」）</label>
         </div>
@@ -379,6 +413,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/admin.js?v=926-20260927-6"></script>
+  <script type="module" src="js/admin.js?v=1008-20261008-1"></script>
 </body>
 </html>
