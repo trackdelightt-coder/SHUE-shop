@@ -2478,3 +2478,38 @@ tr:hover td { background: rgba(255,255,255,.018); }
 .spin-promo-locked .spin-promo-text span b { color: var(--primary); }
 .cart-panel button.spin-open-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .spin-promo-done.spin-promo-locked { border-color: rgba(255, 209, 102, 0.55); background: rgba(255, 209, 102, 0.08); }
+
+/* 轉盤活動宣傳橫幅（網站上方） */
+.spin-promo-banner {
+  max-width: 1800px;
+  margin: 14px auto 0;
+  padding: 11px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  background: linear-gradient(135deg, #3b1a7a, #7c3aed 55%, #d6336c);
+  border-top: 2px solid rgba(255, 209, 102, 0.8);
+  border-bottom: 2px solid rgba(255, 209, 102, 0.8);
+  color: #fff;
+  font-weight: 800;
+  font-size: 15px;
+  text-align: center;
+  box-shadow: 0 0 22px rgba(124, 58, 237, 0.55);
+}
+.spin-promo-banner-icon { font-size: 20px; }
+.spin-promo-banner-text { text-shadow: 0 0 8px rgba(255, 209, 102, 0.7); line-height: 1.5; }
+.spin-promo-banner-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 6px 16px;
+  background: linear-gradient(135deg, #ffe08a, #ffb347);
+  color: #2a1500;
+  font-weight: 900;
+  font-size: 13px;
+  cursor: pointer;
+}
+@media (max-width: 600px) {
+  .spin-promo-banner { font-size: 13px; padding: 10px 16px; }
+}
