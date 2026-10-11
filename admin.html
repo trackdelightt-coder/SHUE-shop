@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>蘇蘇家具商店 - 後台管理</title>
-<link rel="stylesheet" href="css/style.css?v=1008-20261008-3" />
+<link rel="stylesheet" href="css/style.css?v=1011-20261011-4" />
 </head>
 <body>
   <header class="topbar">
@@ -57,9 +57,14 @@
         <div class="full">
           <label>商品標記（已售完不用勾，庫存歸零時前台會自動顯示已售完）</label>
           <div class="flag-row">
-            <label><input type="checkbox" id="fIsNew" /> 🆕 新品(New)</label>
+            <label><input type="checkbox" id="fIsNew" /> 🆕 新品(New)（會出現在前台「近期上架家具區」，超過設定的天數會自動退出）</label>
             <label><input type="checkbox" id="fGiftEligible" /> 🎁 可作為贈品</label>
             <label><input type="checkbox" id="fExcludeFromStoreDiscount" /> 🔒 代售商品（價格固定，不套用全館折扣）</label>
+          </div>
+          <input type="hidden" id="fNewAt" />
+          <div id="newAtRow" class="new-at-row" style="display:none;">
+            <span id="newAtHint"></span>
+            <button type="button" id="resetNewAtBtn" class="secondary-btn">📅 從今天重新算</button>
           </div>
         </div>
         <div>
@@ -165,6 +170,11 @@
         </select>
         <select id="seriesFilterAdmin" style="max-width:200px;">
           <option value="">全部系列</option>
+        </select>
+        <select id="statusFilterAdmin" style="max-width:180px;">
+          <option value="">全部狀態</option>
+          <option value="on">上架中</option>
+          <option value="off">⛔ 已下架</option>
         </select>
       </div>
 
@@ -364,6 +374,19 @@
         <div class="flag-row" style="padding-bottom:4px;">
           <label><input type="checkbox" id="fGiftSectionEnabled" /> 🎁 開啟贈品專區（買家頁面會顯示「贈品專區」區塊，隨時可以關掉）</label>
         </div>
+        <div class="flag-row" style="padding-bottom:4px;">
+          <label><input type="checkbox" id="fRecentEnabled" /> 🆕 顯示「近期上架家具區」（前台會把有勾「新品(New)」的商品放在這一區，沒有新品時整區自動隱藏）</label>
+        </div>
+        <div class="spin-time-row" style="margin-bottom:10px;">
+          <div>
+            <label class="sub-label">近期上架區最多顯示幾件（1～40，沒填就是 8）</label>
+            <input id="fRecentCount" type="number" min="1" max="40" step="1" inputmode="numeric" placeholder="8" />
+          </div>
+          <div>
+            <label class="sub-label">新品顯示幾天（1～365，沒填就是 14；勾選新品的那天開始算，超過就自動退出近期上架區、NEW 標籤也會消失）</label>
+            <input id="fRecentDays" type="number" min="1" max="365" step="1" inputmode="numeric" placeholder="14" />
+          </div>
+        </div>
         <div class="spin-admin-box">
           <label>🎡 轉盤抽獎（買家購物車裡有商品時可以轉一次，中獎會自動折抵在金額裡；抽到什麼會記在訂單上，訂單管理看得到，方便核對）</label>
           <div class="flag-row" style="padding-bottom:4px;">
@@ -413,6 +436,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/admin.js?v=1008-20261008-3"></script>
+  <script type="module" src="js/admin.js?v=1011-20261011-4"></script>
 </body>
 </html>
