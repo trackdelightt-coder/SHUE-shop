@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>蘇蘇家具商店</title>
-<link rel="stylesheet" href="css/style.css?v=1011-20261011-4" />
+<link rel="stylesheet" href="css/style.css?v=1011-20261011-5" />
 </head>
 <body>
   <header class="topbar">
@@ -89,10 +89,17 @@
 
   <section id="recentSection" class="recent-section" style="display:none;">
     <div class="recent-section-heading">
-      <h2>🆕 近期上架家具</h2>
-      <div class="recent-section-sub">剛剛上架的新家具，搶先看！</div>
+      <div>
+        <h2>🆕 近期上架家具</h2>
+        <div class="recent-section-sub">剛剛上架的新家具，搶先看！</div>
+      </div>
+      <button type="button" id="recentMoreBtn" class="recent-more-btn">更多 &gt;&gt;</button>
     </div>
-    <div id="recentGrid" class="recent-grid"></div>
+    <div class="recent-carousel">
+      <button type="button" id="recentPrevBtn" class="recent-arrow prev" aria-label="往左看" style="display:none;">&#8249;</button>
+      <div id="recentGrid" class="recent-grid"></div>
+      <button type="button" id="recentNextBtn" class="recent-arrow next" aria-label="往右看" style="display:none;">&#8250;</button>
+    </div>
   </section>
 
   <section id="auctionSection" class="auction-section" style="display:none;">
@@ -235,7 +242,7 @@
 
 
   <script src="js/vendor/html2canvas.min.js?v=817-20260817-3"></script>
-  <script type="module" src="js/shop.js?v=1011-20261011-4"></script>
+  <script type="module" src="js/shop.js?v=1011-20261011-5"></script>
   <button type="button" id="backToTopBtn" class="back-to-top" aria-label="回到頂端">↑</button>
 
 
