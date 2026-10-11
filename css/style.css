@@ -2584,3 +2584,38 @@ tr:hover td { background: rgba(255,255,255,.018); }
 .mini-badge.new.expired { background: rgba(255, 255, 255, 0.1); color: var(--muted); text-decoration: line-through; }
 .new-at-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0 10px; font-size: 13px; color: var(--muted); }
 .new-at-row button { padding: 4px 10px; font-size: 12px; }
+
+/* 近期上架區：橫向輪播（左右按鈕＋手機可直接滑）＋「更多 >>」 */
+.recent-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.recent-more-btn {
+  flex: 0 0 auto; margin-top: 2px; padding: 7px 16px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(85, 230, 210, 0.6); background: rgba(85, 230, 210, 0.12);
+  color: var(--teal); font-weight: 800; font-size: 14px; font-family: inherit; white-space: nowrap;
+}
+.recent-more-btn:hover { background: rgba(85, 230, 210, 0.24); }
+.recent-carousel { position: relative; }
+.recent-grid {
+  display: flex; grid-template-columns: none; gap: 14px; align-items: flex-start;
+  overflow-x: auto; scroll-snap-type: x proximity; scroll-behavior: smooth;
+  padding: 4px 2px 10px; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.recent-grid::-webkit-scrollbar { display: none; }
+.recent-grid > .card { flex: 0 0 clamp(165px, 17%, 230px); scroll-snap-align: start; min-width: 0; }
+.recent-arrow {
+  position: absolute; top: 42%; transform: translateY(-50%); z-index: 3;
+  width: 40px; height: 40px; border-radius: 50%; align-items: center; justify-content: center;
+  border: 1px solid rgba(85, 230, 210, 0.7); background: rgba(11, 11, 15, 0.88); color: var(--teal);
+  font-size: 26px; line-height: 1; padding: 0 0 3px; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+.recent-arrow.prev { left: -14px; }
+.recent-arrow.next { right: -14px; }
+.recent-arrow:hover:not(:disabled) { background: rgba(85, 230, 210, 0.25); }
+.recent-arrow:disabled { opacity: 0.3; cursor: default; }
+@media (max-width: 860px) {
+  .recent-grid { display: flex; grid-template-columns: none; gap: 9px; }
+  .recent-grid > .card { flex: 0 0 calc(50% - 5px); }
+  .recent-arrow { width: 34px; height: 34px; font-size: 22px; }
+  .recent-arrow.prev { left: -8px; }
+  .recent-arrow.next { right: -8px; }
+  .recent-more-btn { padding: 6px 12px; font-size: 13px; }
+}
