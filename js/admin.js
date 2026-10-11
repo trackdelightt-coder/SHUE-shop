@@ -950,9 +950,68 @@ function sortItemsByOrder(items) {
 // 順序調整還是會對到正確的商品，不會跑掉。
 let ALL_ITEMS = [];
 
+// 新品自動退出：新品在前台顯示幾天（商店設定「新品顯示幾天」，預設 14）
+let RECENT_DAYS_ADMIN = 14;
+const DAY_MS = 86400000;
+
+// 這件新品是否已經超過天數（沒有 newAt 的視為還沒開始算，不算過期）
+function isNewExpired(item) {
+  if (!item || item.isNew !== true) return false;
+  const at = Number(item.newAt);
+  if (!Number.isFinite(at) || at <= 0) return false;
+  return Date.now() - at > RECENT_DAYS_ADMIN * DAY_MS;
+}
+
+// 新品那一欄下面的提示文字：已經算了幾天、還剩幾天
+function updateNewAtHint() {
+  const row = document.getElementById("newAtRow");
+  const hint = document.getElementById("newAtHint");
+  if (!row || !hint) return;
+  const checked = document.getElementById("fIsNew").checked;
+  if (!checked) { row.style.display = "none"; hint.textContent = ""; return; }
+  row.style.display = "";
+  const at = Number(document.getElementById("fNewAt").value);
+  if (!Number.isFinite(at) || at <= 0) {
+    hint.textContent = `存檔後開始算，${RECENT_DAYS_ADMIN} 天後自動退出近期上架區。`;
+    return;
+  }
+  const passed = Math.floor((Date.now() - at) / DAY_MS);
+  const left = RECENT_DAYS_ADMIN - passed;
+  hint.textContent = left > 0
+    ? `已上架 ${passed} 天，還剩 ${left} 天自動退出近期上架區。`
+    : `已超過 ${RECENT_DAYS_ADMIN} 天（已上架 ${passed} 天），前台已經不顯示 NEW，想繼續顯示請按右邊的「從今天重新算」。`;
+}
+
+document.getElementById("fIsNew")?.addEventListener("change", () => {
+  // 剛勾選的時候還沒有開始日，存檔時才會蓋上今天；取消勾選就清掉
+  if (!document.getElementById("fIsNew").checked) document.getElementById("fNewAt").value = "";
+  updateNewAtHint();
+});
+document.getElementById("resetNewAtBtn")?.addEventListener("click", (e) => {
+  e.preventDefault();
+  document.getElementById("fNewAt").value = String(Date.now());
+  updateNewAtHint();
+});
+
 async function loadItems() {
   const snap = await getDocs(collection(db, "items"));
   ALL_ITEMS = sortItemsByOrder(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  // 舊的新品（勾了「新品」但還沒有開始日）：第一次進後台時蓋上今天，從這天起算 14 天，
+  // 不然它們會永遠不會過期。只會寫一次，之後就有 newAt 了。
+  const legacy = ALL_ITEMS.filter((i) => i.isNew === true && !(Number(i.newAt) > 0));
+  if (legacy.length > 0) {
+    const now = Date.now();
+    await Promise.all(
+      legacy.map(async (i) => {
+        try {
+          await updateDoc(doc(db, "items", i.id), { newAt: now });
+          i.newAt = now;
+        } catch (err) {
+          console.warn("補新品開始日失敗", i.id, err);
+        }
+      })
+    );
+  }
   renderItemsTable();
 }
 
@@ -965,7 +1024,21 @@ function renderItemsTable() {
   const category = document.getElementById("categoryFilter").value;
   const seriesFilter = document.getElementById("seriesFilterAdmin")?.value || "";
 
+  // 狀態篩選：選項旁邊直接寫出各有幾件，已下架的一眼就看得到有幾件
+  const statusSelect = document.getElementById("statusFilterAdmin");
+  const statusFilter = statusSelect ? statusSelect.value : "";
+  if (statusSelect) {
+    const offCount = ALL_ITEMS.filter((i) => i.active === false).length;
+    const onCount = ALL_ITEMS.length - offCount;
+    statusSelect.options[0].textContent = `全部狀態（${ALL_ITEMS.length}）`;
+    statusSelect.options[1].textContent = `上架中（${onCount}）`;
+    statusSelect.options[2].textContent = `⛔ 已下架（${offCount}）`;
+    statusSelect.classList.toggle("has-off", offCount > 0);
+  }
+
   let visibleItems = ALL_ITEMS;
+  if (statusFilter === "on") visibleItems = visibleItems.filter((i) => i.active !== false);
+  if (statusFilter === "off") visibleItems = visibleItems.filter((i) => i.active === false);
   if (category) {
     visibleItems = visibleItems.filter((i) => i.category === category);
   }
@@ -1006,8 +1079,10 @@ function renderItemsTable() {
     // 用「完整清單」裡的位置判斷是否已經到最上/最下面，跟搜尋篩選無關
     const idx = ALL_ITEMS.findIndex((i) => i.id === item.id);
     const isSoldOut = item.stock !== undefined && item.stock <= 0;
+    const isInactive = item.active === false;
     const badges = [
-      item.isNew ? '<span class="mini-badge new">NEW</span>' : "",
+      isInactive ? '<span class="mini-badge inactive">⛔ 已下架</span>' : "",
+      item.isNew ? (isNewExpired(item) ? '<span class="mini-badge new expired" title="上架超過天數，前台已不顯示 NEW">NEW（已過期）</span>' : '<span class="mini-badge new">NEW</span>') : "",
       isSoldOut ? '<span class="mini-badge soldout">已售完</span>' : "",
       item.giftEligible ? '<span class="mini-badge gift">🎁贈品</span>' : "",
       item.excludeFromStoreDiscount ? '<span class="mini-badge consignment">🔒代售</span>' : "",
@@ -1025,6 +1100,7 @@ function renderItemsTable() {
           .join("\n")}">🎨 ${colorVariantList.length}色</div>`
       : "";
     const tr = document.createElement("tr");
+    if (isInactive) tr.classList.add("item-inactive");
     // data-item-id：拖曳排序時要靠這個找出「拖完之後、畫面上這一列的上下鄰居實際是誰」，
     // 才能算出新的排序數字（見下面 reorderItemBetween）。
     tr.dataset.itemId = item.id;
@@ -1039,12 +1115,12 @@ function renderItemsTable() {
       <td>🍬 ${item.priceCandy}</td>
       <td>💵 NT$ ${item.priceCash}</td>
       <td>${item.stock}${altStockHtml}${colorVariantHtml}</td>
-      <td><span class="badge ${item.active ? "on" : "off"}">${item.active ? "上架中" : "已下架"}</span></td>
+      <td><span class="badge ${isInactive ? "off" : "on"}">${isInactive ? "⛔ 已下架" : "✅ 上架中"}</span></td>
       <td class="row-actions">
         <button class="move-up" ${idx === 0 ? "disabled" : ""} title="往上移">▲</button>
         <button class="move-down" ${idx === ALL_ITEMS.length - 1 ? "disabled" : ""} title="往下移">▼</button>
         <button class="edit">編輯</button>
-        <button class="edit toggle">${item.active ? "下架" : "上架"}</button>
+        <button class="edit toggle${isInactive ? " relist" : ""}">${isInactive ? "重新上架" : "下架"}</button>
         <button class="del">刪除</button>
       </td>
     `;
@@ -1169,6 +1245,7 @@ function renderItemsPagination(totalItems) {
 document.getElementById("itemSearchBox").addEventListener("input", () => { ITEMS_CURRENT_PAGE = 1; renderItemsTable(); });
 document.getElementById("categoryFilter").addEventListener("change", () => { ITEMS_CURRENT_PAGE = 1; renderItemsTable(); });
 document.getElementById("seriesFilterAdmin")?.addEventListener("change", () => { ITEMS_CURRENT_PAGE = 1; renderItemsTable(); });
+document.getElementById("statusFilterAdmin")?.addEventListener("change", () => { ITEMS_CURRENT_PAGE = 1; renderItemsTable(); });
 
 // 把完整清單（ALL_ITEMS）裡第 idx 筆和它上面（direction=-1）或下面（direction=1）
 // 那筆互換順序。只有這兩筆商品的 sortOrder 真的有變，所以只需要寫回這兩筆，
@@ -1534,6 +1611,8 @@ function fillForm(item) {
   document.getElementById("fZoomImage").value = item.zoomImage || "";
   document.getElementById("fDesc").value = item.description || "";
   document.getElementById("fIsNew").checked = item.isNew === true;
+  document.getElementById("fNewAt").value = item.isNew === true && Number(item.newAt) > 0 ? String(item.newAt) : "";
+  updateNewAtHint();
   document.getElementById("fGiftEligible").checked = item.giftEligible === true;
   document.getElementById("fExcludeFromStoreDiscount").checked = item.excludeFromStoreDiscount === true;
   renderTagPicker(Array.isArray(item.tags) ? item.tags : []);
@@ -1562,6 +1641,8 @@ function clearForm() {
   document.getElementById("fSaleEnd").value = "";
   updateSaleStatusHint();
   document.getElementById("fIsNew").checked = false;
+  document.getElementById("fNewAt").value = "";
+  updateNewAtHint();
   document.getElementById("fGiftEligible").checked = false;
   document.getElementById("fExcludeFromStoreDiscount").checked = false;
   renderTagPicker([]);
@@ -1588,13 +1669,18 @@ async function saveItem() {
   const stock = colorVariants.length > 0
     ? colorVariants.reduce((sum, v) => sum + v.stock, 0)
     : Number(document.getElementById("fStock").value) || 0;
+  // 新品開始日：已經是新品就保留原本的日子（不會因為改價格就重新算），剛勾選才蓋上今天，取消勾選就清掉
+  const isNewChecked = document.getElementById("fIsNew").checked;
+  const existingNewAt = Number(document.getElementById("fNewAt").value);
+  const newAt = isNewChecked ? (existingNewAt > 0 ? existingNewAt : Date.now()) : null;
   const payload = {
     name: document.getElementById("fName").value.trim(),
     seriesId: document.getElementById("fSeries").value || "",
     seriesName: ALL_SERIES.find((x) => x.id === document.getElementById("fSeries").value)?.name || "",
     category: document.getElementById("fCategory").value,
     tags: getCheckedTags(),
-    isNew: document.getElementById("fIsNew").checked,
+    isNew: isNewChecked,
+    newAt,
     giftEligible: document.getElementById("fGiftEligible").checked,
     excludeFromStoreDiscount: document.getElementById("fExcludeFromStoreDiscount").checked,
     priceCandy,
@@ -2159,6 +2245,17 @@ document.getElementById("addSpinPrizeBtn").onclick = (e) => {
 async function loadSettings() {
   const snap = await getDoc(doc(db, "settings", "main"));
   const settings = snap.exists() ? snap.data() : {};
+  document.getElementById("fRecentEnabled").checked = settings.recentSectionEnabled !== false;
+  document.getElementById("fRecentCount").value =
+    settings.recentSectionCount === undefined || settings.recentSectionCount === null ? "" : settings.recentSectionCount;
+  document.getElementById("fRecentDays").value =
+    settings.recentSectionDays === undefined || settings.recentSectionDays === null ? "" : settings.recentSectionDays;
+  {
+    const d = Number(settings.recentSectionDays);
+    RECENT_DAYS_ADMIN = Number.isInteger(d) && d >= 1 && d <= 365 ? d : 14;
+    updateNewAtHint();
+    if (ALL_ITEMS.length > 0) renderItemsTable();
+  }
   document.getElementById("fSpinEnabled").checked = settings.spinWheelEnabled === true;
   document.getElementById("fSpinStart").value = settings.spinWheelStart || "";
   document.getElementById("fSpinEnd").value = settings.spinWheelEnd || "";
@@ -2197,6 +2294,29 @@ async function saveSettings() {
   const genderFemaleOnly = document.getElementById("fGenderFemaleOnly").checked;
   const popupMessage = document.getElementById("fPopupMessage").value;
   const popupEnabled = document.getElementById("fPopupEnabled").checked;
+
+  // 近期上架家具區：開關＋最多顯示幾件（空白＝預設 8）
+  const recentSectionEnabled = document.getElementById("fRecentEnabled").checked;
+  const recentRaw = document.getElementById("fRecentCount").value.trim();
+  let recentSectionCount = 8;
+  if (recentRaw !== "") {
+    const n = Number(recentRaw);
+    if (!Number.isInteger(n) || n < 1 || n > 40) {
+      alert("近期上架區「最多顯示幾件」要填 1～40 的整數（空白就是 8 件）。");
+      return;
+    }
+    recentSectionCount = n;
+  }
+  const recentDaysRaw = document.getElementById("fRecentDays").value.trim();
+  let recentSectionDays = 14;
+  if (recentDaysRaw !== "") {
+    const n = Number(recentDaysRaw);
+    if (!Number.isInteger(n) || n < 1 || n > 365) {
+      alert("「新品顯示幾天」要填 1～365 的整數（空白就是 14 天）。");
+      return;
+    }
+    recentSectionDays = n;
+  }
 
   // 轉盤抽獎：先驗證獎項設定，有問題就停下來告訴她，不要存一份會讓買家端算出怪金額的設定
   const spinWheelEnabled = document.getElementById("fSpinEnabled").checked;
@@ -2252,6 +2372,9 @@ async function saveSettings() {
         genderFemaleOnly,
         popupMessage,
         popupEnabled,
+        recentSectionEnabled,
+        recentSectionCount,
+        recentSectionDays,
         spinWheelEnabled,
         spinWheelStart,
         spinWheelEnd,

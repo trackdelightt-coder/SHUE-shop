@@ -458,10 +458,21 @@ function seriesCover(series) {
   return firstItem?.image || PLACEHOLDER_IMG;
 }
 
-// 這個系列裡只要有一件商品被標記「新品」，系列首圖就會出現 NEW 斜緞帶
+// 「新品」標記會自動過期：後台勾新品的那一刻會記下日期（newAt），超過 N 天（後台可設，預設 14）
+// 前台就不再當作新品——NEW 標籤、近期上架區、系列的 NEW 緞帶全部一起消失，不用手動取消勾選。
+// 還沒有記錄日期的舊資料（這個功能上線前就勾了新品的）先照原樣當作新品，
+// 賣家下次打開後台時系統會替它們補上日期，從那天開始算 N 天。
+function isNewActive(item) {
+  if (!item || item.isNew !== true) return false;
+  const at = Number(item.newAt);
+  if (!Number.isFinite(at) || at <= 0) return true;
+  return Date.now() - at <= RECENT_CONFIG.days * 86400000;
+}
+
+// 這個系列裡只要有一件商品「還在新品期間」，系列首圖就會出現 NEW 斜緞帶
 function seriesHasNew(series) {
   return ITEMS.some(
-    (item) => (item.seriesId === series.id || (!item.seriesId && item.seriesName === series.name)) && item.isNew
+    (item) => (item.seriesId === series.id || (!item.seriesId && item.seriesName === series.name)) && isNewActive(item)
   );
 }
 
@@ -548,6 +559,7 @@ function closeSpecialView() {
   renderGrid();
   renderGiftSection();
   renderSaleSection();
+  renderRecentSection();
   renderAuctionSection();
   renderExchangeSection();
 }
@@ -607,6 +619,7 @@ async function loadItems() {
   renderCart();
   renderGiftSection();
   renderSaleSection();
+  renderRecentSection();
 }
 
 // 購物車是存在買家瀏覽器的 localStorage 裡，即使關掉分頁、隔了很多天再回來也還在。
@@ -749,6 +762,7 @@ async function loadAnnouncement() {
     renderStoreDiscountBanner();
     renderGrid();
     renderSaleSection();
+    renderRecentSection();
 
     // 首圖標題／副標題：後台有填就用後台的內容（用 textContent 塞值，配合 CSS 的
     // white-space: pre-line 讓換行照樣生效，不會有 innerHTML 注入風險），沒填就用預設文案。
@@ -765,6 +779,19 @@ async function loadAnnouncement() {
 
     GIFT_SECTION_ENABLED = data.giftSectionEnabled === true;
     renderGiftSection();
+
+    // 近期上架家具區：沒設定過就預設開、最多 8 件
+    const recentCount = Math.floor(Number(data.recentSectionCount));
+    const recentDays = Math.floor(Number(data.recentSectionDays));
+    RECENT_CONFIG = {
+      enabled: data.recentSectionEnabled !== false,
+      count: Number.isFinite(recentCount) && recentCount >= 1 ? Math.min(recentCount, 40) : 8,
+      days: Number.isFinite(recentDays) && recentDays >= 1 ? Math.min(recentDays, 365) : 14,
+    };
+    // 新品天數可能變了：商品格子（NEW 標籤）、系列緞帶、近期上架區都要照新設定重畫一次
+    renderGrid();
+    renderSeries();
+    renderRecentSection();
 
     // 轉盤抽獎設定：後台沒存過獎項就用預設獎項。讀回來後重畫購物車，抽獎入口才會出現／消失。
     SPIN_CONFIG = {
@@ -982,7 +1009,7 @@ function buildProductCard(item, { extraClass, isGift } = {}) {
     <div class="body">
       <!-- NEW 改成跟分類同一排的小標籤（不再是圖片上的斜緞帶），這樣圖片上才不會跟
            全館折扣／特價的斜緞帶擠在一起；放在最前面，讓買家掃過去第一眼先看到新品。 -->
-      ${item.isNew ? '<div class="new-badge">NEW</div>' : ""}
+      ${isNewActive(item) ? '<div class="new-badge">NEW</div>' : ""}
       <div class="cat">${item.category}</div>
       ${Array.isArray(item.tags) && item.tags.length ? `<div class="item-tags">${item.tags.map(t=>`<span>${t}</span>`).join("")}</div>` : ""}
       ${item.excludeFromStoreDiscount ? '<div class="consignment-badge">🔒 代售</div>' : ""}
@@ -1084,6 +1111,35 @@ function renderSaleSection() {
   section.style.display = "block";
   grid.innerHTML = "";
   saleItems.forEach((item) => grid.appendChild(buildProductCard(item, { extraClass: "sale-card" })));
+}
+
+// ---------- 近期上架家具區 ----------
+// 顯示後台有勾「🆕 新品(New)」的商品，照商品原本的排序（新上架的商品會排在最前面）。
+// 後台可以關掉這一區、也可以設定最多顯示幾件；沒有任何新品時整區自動隱藏。
+let RECENT_CONFIG = { enabled: true, count: 8, days: 14 };
+
+function renderRecentSection() {
+  const section = document.getElementById("recentSection");
+  const grid = document.getElementById("recentGrid");
+  if (!section || !grid) return;
+
+  // 正在看系列頁或贈品「查看更多」全部列表時，跟特價區、贈品專區一樣先藏起來，不要蓋回去。
+  if (ACTIVE_SERIES_ID || ACTIVE_GIFT_VIEW) {
+    section.style.display = "none";
+    return;
+  }
+
+  const recentItems = ITEMS.filter((i) => isNewActive(i) && i.giftEligible !== true);
+  if (!RECENT_CONFIG.enabled || recentItems.length === 0) {
+    section.style.display = "none";
+    grid.innerHTML = "";
+    return;
+  }
+  section.style.display = "block";
+  grid.innerHTML = "";
+  recentItems
+    .slice(0, RECENT_CONFIG.count)
+    .forEach((item) => grid.appendChild(buildProductCard(item, { extraClass: "recent-card" })));
 }
 
 // ---------- 競標商品 ----------
@@ -1298,6 +1354,7 @@ function updateCountdowns() {
   if (anySaleEnded) {
     renderGrid();
     renderSaleSection();
+  renderRecentSection();
     renderStoreDiscountBanner();
   }
 }
@@ -1518,6 +1575,7 @@ function setPaymentMethod(method) {
   renderGrid();
   renderCart();
   renderSaleSection();
+  renderRecentSection();
 }
 
 function updatePayToggleUI() {
