@@ -2530,3 +2530,57 @@ tr:hover td { background: rgba(255,255,255,.018); }
   cursor: pointer;
 }
 .spin-sound-btn.off { opacity: 0.6; }
+
+/* 近期上架家具區 */
+.recent-section {
+  max-width: 1800px;
+  margin: 18px auto 0;
+  padding: 18px 28px;
+  border: 1px solid rgba(85, 230, 210, 0.35);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(85, 230, 210, 0.08), rgba(11, 11, 15, 0.9));
+}
+.recent-section-heading h2 { margin: 0; color: var(--teal); }
+.recent-section-sub { margin: 4px 0 14px; font-size: 13px; color: var(--muted); }
+.recent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 14px; align-items: start; }
+@media (max-width: 860px) {
+  .recent-section { padding: 16px 20px; }
+  .recent-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+}
+
+/* 後台：已下架商品要一眼看得出來 */
+#itemsTbody tr.item-inactive {
+  background: rgba(255, 111, 129, 0.08);
+  box-shadow: inset 4px 0 0 var(--danger);
+}
+#itemsTbody tr.item-inactive td:not(.row-actions) { opacity: 0.55; }
+#itemsTbody tr.item-inactive td:not(.row-actions) img { filter: grayscale(1); }
+#itemsTbody tr.item-inactive td:nth-child(8) { opacity: 1; }
+.mini-badge.inactive { background: var(--danger); color: #fff; font-size: 11px; padding: 2px 8px; }
+.badge.off { background: rgba(255, 111, 129, 0.2); color: #ff8fa0; font-weight: 800; font-size: 12px; }
+#itemsTbody .toggle.relist { background: rgba(63, 216, 194, 0.18); border-color: var(--success); color: var(--success); font-weight: 800; }
+#statusFilterAdmin.has-off { border-color: rgba(255, 111, 129, 0.6); }
+
+/* 後台商品篩選的三個下拉選單，樣子統一（以前系列下拉沒套到分類下拉的樣式） */
+#seriesFilterAdmin, #statusFilterAdmin {
+  padding: 10px 14px;
+  background: #121217;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 14px;
+  font-family: inherit;
+}
+#seriesFilterAdmin option, #statusFilterAdmin option { background: var(--panel-solid); color: #fff; }
+#statusFilterAdmin.has-off { border-color: rgba(255, 111, 129, 0.6); }
+
+/* 近期上架區：左右留邊，不要貼到螢幕邊 */
+.recent-section { width: min(1800px, calc(100% - 80px)); max-width: none; }
+@media (max-width: 860px) {
+  .recent-section { width: calc(100% - 32px); }
+}
+
+/* 新品自動退出：已過期的 NEW 標籤變灰；表單裡的開始日提示 */
+.mini-badge.new.expired { background: rgba(255, 255, 255, 0.1); color: var(--muted); text-decoration: line-through; }
+.new-at-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0 10px; font-size: 13px; color: var(--muted); }
+.new-at-row button { padding: 4px 10px; font-size: 12px; }
