@@ -73,6 +73,8 @@ let ACTIVE_SERIES_ID = "";
 // 首頁贈品專區只先預覽幾件（大約兩排），其餘要按「查看更多」才會在下面商品清單完整顯示
 const GIFT_PREVIEW_COUNT = 8;
 let ACTIVE_GIFT_VIEW = false;
+// 近期上架區按「更多 >>」：下面商品清單切成只顯示近期上架（還沒過期的新品）
+let ACTIVE_RECENT_VIEW = false;
 let CATEGORY = "全部";
 let SEARCH_KEYWORD = "";
 let ACTIVE_TAG = "全部";
@@ -505,6 +507,7 @@ function renderSeries() {
 function openSeries(seriesId) {
   ACTIVE_SERIES_ID = seriesId;
   ACTIVE_GIFT_VIEW = false;
+  ACTIVE_RECENT_VIEW = false;
   CATEGORY = "全部";
   SEARCH_KEYWORD = "";
   document.getElementById("searchBox").value = "";
@@ -548,6 +551,7 @@ function openSeries(seriesId) {
 function closeSpecialView() {
   ACTIVE_SERIES_ID = "";
   ACTIVE_GIFT_VIEW = false;
+  ACTIVE_RECENT_VIEW = false;
   CATEGORY = "全部";
   document.getElementById("seriesHero").style.display = "none";
   document.getElementById("seriesHero").innerHTML = "";
@@ -567,6 +571,7 @@ function closeSpecialView() {
 // 贈品專區按「查看更多」：把下面商品清單切成只顯示贈品商品，並顯示返回鍵。
 function openGiftView() {
   ACTIVE_GIFT_VIEW = true;
+  ACTIVE_RECENT_VIEW = false;
   ACTIVE_SERIES_ID = "";
   CATEGORY = "全部";
   SEARCH_KEYWORD = "";
@@ -586,6 +591,32 @@ function openGiftView() {
   if (auctionSectionOnGiftView) auctionSectionOnGiftView.style.display = "none";
   const exchangeSectionOnGiftView = document.getElementById("exchangeSection");
   if (exchangeSectionOnGiftView) exchangeSectionOnGiftView.style.display = "none";
+  renderFilters();
+  renderGrid();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// 近期上架區按「更多 >>」：把下面商品清單切成只顯示近期上架家具，並顯示返回鍵。
+function openRecentView() {
+  ACTIVE_RECENT_VIEW = true;
+  ACTIVE_GIFT_VIEW = false;
+  ACTIVE_SERIES_ID = "";
+  CATEGORY = "全部";
+  SEARCH_KEYWORD = "";
+  CURRENT_PAGE = 1;
+  document.getElementById("searchBox").value = "";
+  document.getElementById("seriesHero").style.display = "none";
+  document.getElementById("seriesHero").innerHTML = "";
+  document.getElementById("productSectionTitle").textContent = "🆕 近期上架家具";
+  document.getElementById("backToAllBtn").style.display = "inline-block";
+  const bottomBack = document.getElementById("seriesBottomBackBtn");
+  bottomBack.textContent = "← 返回首頁";
+  bottomBack.style.display = "block";
+  document.getElementById("seriesSection").style.display = "none";
+  ["giftSection", "saleSection", "recentSection", "auctionSection", "exchangeSection"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = "none";
+  });
   renderFilters();
   renderGrid();
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -874,7 +905,7 @@ function renderFilters() {
   el.innerHTML = "";
 
   // 系列頁、贈品專區「查看更多」頁商品通常不多：不再顯示分類按鈕。
-  if (ACTIVE_SERIES_ID || ACTIVE_GIFT_VIEW) {
+  if (ACTIVE_SERIES_ID || ACTIVE_GIFT_VIEW || ACTIVE_RECENT_VIEW) {
     el.style.display = "none";
     document.getElementById("tagFilters").style.display = "none";
     CATEGORY = "全部"; ACTIVE_TAG = "全部"; CURRENT_PAGE = 1;
@@ -944,10 +975,11 @@ function renderGrid() {
   const list = ITEMS.filter((i) => {
     const matchSeries = !ACTIVE_SERIES_ID || i.seriesId === ACTIVE_SERIES_ID || (activeSeries && !i.seriesId && i.seriesName === activeSeries.name);
     const matchGift = !ACTIVE_GIFT_VIEW || i.giftEligible === true;
+    const matchRecent = !ACTIVE_RECENT_VIEW || (isNewActive(i) && i.giftEligible !== true);
     const matchCategory = CATEGORY === "全部" || i.category === CATEGORY;
     const matchKeyword = !keyword || i.name.toLowerCase().includes(keyword);
     const matchTag = ACTIVE_TAG === "全部" || (Array.isArray(i.tags) && i.tags.includes(ACTIVE_TAG));
-    return matchSeries && matchGift && matchCategory && matchKeyword && matchTag;
+    return matchSeries && matchGift && matchRecent && matchCategory && matchKeyword && matchTag;
   });
 
   renderTagFilters();
@@ -1097,7 +1129,7 @@ function renderSaleSection() {
   if (!section || !grid) return;
 
   // 正在看系列頁或贈品「查看更多」全部列表時，跟贈品專區一樣先不要蓋回去。
-  if (ACTIVE_SERIES_ID || ACTIVE_GIFT_VIEW) {
+  if (ACTIVE_SERIES_ID || ACTIVE_GIFT_VIEW || ACTIVE_RECENT_VIEW) {
     section.style.display = "none";
     return;
   }
@@ -1124,7 +1156,7 @@ function renderRecentSection() {
   if (!section || !grid) return;
 
   // 正在看系列頁或贈品「查看更多」全部列表時，跟特價區、贈品專區一樣先藏起來，不要蓋回去。
-  if (ACTIVE_SERIES_ID || ACTIVE_GIFT_VIEW) {
+  if (ACTIVE_SERIES_ID || ACTIVE_GIFT_VIEW || ACTIVE_RECENT_VIEW) {
     section.style.display = "none";
     return;
   }
@@ -1140,7 +1172,34 @@ function renderRecentSection() {
   recentItems
     .slice(0, RECENT_CONFIG.count)
     .forEach((item) => grid.appendChild(buildProductCard(item, { extraClass: "recent-card" })));
+  grid.scrollLeft = 0;
+  updateRecentArrows();
 }
+
+// 近期上架區的左右按鈕：一次捲動大約一整排的寬度；捲到頭／尾時對應的按鈕變灰，放不滿一排時整組按鈕隱藏。
+function updateRecentArrows() {
+  const grid = document.getElementById("recentGrid");
+  const prev = document.getElementById("recentPrevBtn");
+  const next = document.getElementById("recentNextBtn");
+  if (!grid || !prev || !next) return;
+  const maxScroll = grid.scrollWidth - grid.clientWidth;
+  const scrollable = maxScroll > 4;
+  prev.style.display = scrollable ? "flex" : "none";
+  next.style.display = scrollable ? "flex" : "none";
+  prev.disabled = grid.scrollLeft <= 4;
+  next.disabled = grid.scrollLeft >= maxScroll - 4;
+}
+
+function scrollRecent(dir) {
+  const grid = document.getElementById("recentGrid");
+  if (!grid) return;
+  grid.scrollBy({ left: dir * Math.max(grid.clientWidth * 0.85, 160), behavior: "smooth" });
+}
+document.getElementById("recentPrevBtn")?.addEventListener("click", () => scrollRecent(-1));
+document.getElementById("recentNextBtn")?.addEventListener("click", () => scrollRecent(1));
+document.getElementById("recentGrid")?.addEventListener("scroll", updateRecentArrows, { passive: true });
+document.getElementById("recentMoreBtn")?.addEventListener("click", openRecentView);
+window.addEventListener("resize", updateRecentArrows);
 
 // ---------- 競標商品 ----------
 // 後台設定起標價、加價金額、結標時間，買家直接在頁面上點「出價」，
@@ -1365,7 +1424,7 @@ function renderAuctionSection() {
   if (!section || !grid) return;
 
   // 跟特價區、贈品專區一樣：正在看系列頁或贈品「查看更多」全部列表時先不要蓋回去。
-  if (ACTIVE_SERIES_ID || ACTIVE_GIFT_VIEW) {
+  if (ACTIVE_SERIES_ID || ACTIVE_GIFT_VIEW || ACTIVE_RECENT_VIEW) {
     section.style.display = "none";
     return;
   }
@@ -1455,7 +1514,7 @@ function renderExchangeSection() {
   if (!section || !grid) return;
 
   // 跟特價區、競標區一樣：正在看系列頁或贈品「查看更多」全部列表時先不要蓋回去。
-  if (ACTIVE_SERIES_ID || ACTIVE_GIFT_VIEW) {
+  if (ACTIVE_SERIES_ID || ACTIVE_GIFT_VIEW || ACTIVE_RECENT_VIEW) {
     section.style.display = "none";
     return;
   }
@@ -1483,7 +1542,7 @@ function renderGiftSection() {
   if (!section || !grid) return;
 
   // 正在看系列頁或贈品「查看更多」全部列表時，首頁預覽區塊本來就故意被藏起來，這裡不要蓋回去。
-  if (ACTIVE_SERIES_ID || ACTIVE_GIFT_VIEW) return;
+  if (ACTIVE_SERIES_ID || ACTIVE_GIFT_VIEW || ACTIVE_RECENT_VIEW) return;
 
   const giftItems = ITEMS.filter((i) => i.giftEligible === true);
   if (!GIFT_SECTION_ENABLED || giftItems.length === 0) {
